@@ -1,0 +1,74 @@
+# sslca.py - Perform basic tasks for a mini-PKI
+
+This tool is a Python wrapper script for OpenSSL. I use it to keep track of the two tiny PKIs that I administer - one for home, and one for a client. 
+
+It's inteded for use by people who handle the whole infrastructure themselves. For me, the priviledge separation of creating a key on one host, generating a CSR, copying the CSR to the CA, signing the CSR, and copying the cert back to the host isn't (usually) very useful since I'm doing everything myself anyway.
+
+## Requirements
+
+- python3
+  - On Unix: python3 in your path. 
+  - On Windows: you have to [set up .py scripts to be run by python](http://docs.python.org/using/windows.html#executing-scripts), wherever you've installed it to.
+- openssl
+  - On Unix: openssl in your path.
+  - On Windows: you can just place openssl.exe in your path, but it also checks to see if you've installed [OpenVPN](http://openvpn.net/), or [GnuWin32's openssl pacakge](http://gnuwin32.sourceforge.net/packages/openssl.htm), or [msysgit](https://git.wiki.kernel.org/), and can use openssl.exe from those places.
+
+**Additionally, for the time being it requires that you already have a CA key and configuration file that works for you**. I want to change this in the future. (The only reason for this is that I've dragged my crusty CA configuration around for so long that I don't remember how I built it; I need to reacquire this knowledge and place it in the script for safekeeping.)
+
+## How to use
+
+The basic arguments:
+    
+    sslca.py buildcnf            Generate an openssl.cnf file for a server
+    sslca.py genkey              Generate a private key & CSR for a server
+    sslca.py sign                Sign a CSR with an existing CA key
+    sslca.py gensign             Both generate and sign in one step
+
+Each of these has a required argument, `servername`. This argument is used as the basis for the various key, csr, cnf, etc filenames. Note that `genkey` (and `gensign`) look for an existing `servername.openssl.cnf` file and try to use that if present, so that you can customize the configuration for a given host outside of the wrapper if you want to. If that file doesn't exist, it will generate a very basic one for you, optionally aided by these arguments: 
+
+    -c COMMONNAME  Specify a hostname rather than use the servername to use in
+                   the config file. (Otherwise use the 
+    -a ALTNAMES    A list of subjectAltName entries, separated by commas, such
+                   as myserver,myserver.domain.tld,10.10.10.10
+
+Some examples:
+
+    # generate a key and sign it; valid for beerbread.example.com
+    sslca.py gensign beerbread.example.com
+    
+    # generate a cnf file, edit it, and then generate the private key 
+    # from the modified config file
+    sslca.py buildcnf bedhead.example.com
+    $EDITOR bedhead.example.com.openssl.cnf
+    sslca.py genkey bedhead.example.comf
+
+    # generate and sign a cert called "applejuice" that will be valid for: 
+    # applejuice.sub.example.com, <anything>.sub2.example.com, and 192.168.2.2
+    sslca.py gensign applejuice -c applejuice.sub.example.com -a applejuice,*sub2.example.com,192.168.2.2
+
+### subjectAltName
+
+As you can see, the altnames stuff is optional, but I run into it a lot (and it also was the part that gave me the most trouble when I used to manage my PKIs by invoking the OpenSSL binary directly). You'll need to deal with alt names if any of the following are true:
+
+- if the server responds to a wildcard
+- if the server just has multiple domain names
+- if you want to access the server by IP address as well as domain name
+- if sometimes you want to use its FQDN (like <https://beerbread.example.com>) and sometimes just by its hostname (like <https://beerbread>)
+- if you want to use the same cert to secure services both inside and outside of a NAT (e.g. if your internal hostname is beerbread.is.the.greatest but your external hostname is beerbread.dyndns.com)
+
+## Security
+
+This tool is designed for PKIs whose infrastructure is handled by a single administrator. Its original intent was just to automate key generation, CSR requesting, and CSR signing. This means it can generate your private key and sign it all in one place if you wish. 
+
+It now has developed a secondary intent, which is to insulate the user from having to know too many stupid things about OpenSSL. To this end it can automatically generate some very basic openssl.cnf files. I'm going to add more features in this direction in the future. 
+
+I haven't ever had to revoke an OpenSSL key, so it doesn't do that yet. 
+
+## History
+
+- First I was using openssl directly. *This way lies madness.* 
+- I later turned to a makefile that came from (the apparently now defunct) sial.org. It worked pretty well, but I don't understand make's syntax, which meant that when I wanted to change it I had no idea what the fuck. 
+- After a while I just pulled everything into a shell script. 
+- 20111121: I wanted the script to run on Windows, so I ported it to Python and added some features. 
+- 20111128: Now it's on GitHub. 
+
