@@ -6,9 +6,9 @@
 # - http://sial.org/howto/openssl/ca/
 # - http://www.openssl.org/docs/apps/ca.html
 
-import sys, os, shutil, argparse, logging, subprocess
-#logging.basicConfig(level=logging.CRITICAL) #show only logging.critical() messages
-logging.basicConfig(level=logging.DEBUG) #show all messages up to and including logging.debug() messages
+import sys, os, shutil, argparse, logging, subprocess, socket
+logging.basicConfig(level=logging.CRITICAL) #show only logging.critical() messages
+#logging.basicConfig(level=logging.DEBUG) #show all messages up to and including logging.debug() messages
 
 def is_exe(fpath):
     return os.path.exists(fpath) and os.access(fpath, os.X_OK)
@@ -25,244 +25,142 @@ def which(program):
                 return exe_file
     return None
 
-def genprivkey(args):
-    logging.debug("genprivkey args: %r" % args)
-    for clientname in args.clientname:
-        subprocess.check_call([opensslbin, "genrsa", "-out", clientname+".key", "4096"])
-        if not (os.path.exists(clientname+".openssl.cnf")):
-            logging.debug("genprivkey: openssl configuration file not present, copying openssl.cnf.client-DEFAULT to %r" % clientname+".openssl.cnf")
-            shutil.copy2("openssl.cnf.client-DEFAULT", clientname+".openssl.cnf")
-            #input("Your editor was opened on the file %r; press return when you have finished editing this file (REQUIRED).")
-            subprocess.check_call([myeditor, clientname+".openssl.cnf"])
-        subprocess.check_call([opensslbin, "req", "-new", "-nodes", "-config", 
-                               clientname+".openssl.cnf", "-key", 
-                               clientname+".key", "-out", clientname+".csr"])
+class SSLCA:
 
-def cainit:
-    ca-cnf="""# openssl.ca.cnf
-#
-# OpenSSL configuration file for custom Certificate Authority. Use a
-# different openssl.cnf file to generate certificate signing requests;
-# this one is for use only in Certificate Authority operations (csr ->
-# cert, cert revocation, revocation list generation).
-#
-# Be sure to customize this file prior to use, e.g. the commonName and
-# other options under the root_ca_distinguished_name section.
-#
-
-HOME                    = .
-RANDFILE                = $ENV::HOME/.rnd
-
-[ ca ]
-default_ca      = CA_default
-
-[ CA_default ]
-dir             = .
-# unsed at present, and my limited certs can be kept in current dir
-#certs          = $dir/certs
-new_certs_dir   = $dir/newcerts
-crl_dir         = $dir/crl
-database        = $dir/index
-
-certificate     = $dir/ca-cert.pem
-serial          = $dir/serial
-crl             = $dir/ca-crl.pem
-private_key     = $dir/private/ca-key.pem
-RANDFILE        = $dir/private/.rand
-
-x509_extensions = usr_cert
-
-# If this isn't present, you can sign a CRL that requests SubjectAltName entries,
-# but the SAN entries themselves won't come into the resulting certificate. Argh. 
-copy_extensions	= copy
-
-# Make new requests easier to sign - allow two subjects with same name
-# (Or revoke the old certificate first.)
-unique_subject  = no
-
-# Comment out the following two lines for the "traditional"
-# (and highly broken) format.
-name_opt        = ca_default
-cert_opt        = ca_default
-
-default_crl_days= 30
-default_days    = 365
-# if need to be compatible with older software, use weaker md5
-default_md      = sha1
-# MSIE may need following set to yes?
-preserve        = no
-
-# A few difference way of specifying how similar the request should look
-# For type CA, the listed attributes must be the same, and the optional
-# and supplied fields are just that :-)
-policy          = policy_match
-
-# For the CA policy
-[ policy_match ]
-countryName             = optional
-stateOrProvinceName     = optional
-organizationName        = optional
-organizationalUnitName  = optional
-commonName              = supplied
-emailAddress            = optional
-
-# For the 'anything' policy
-# At this point in time, you must list all acceptable 'object'
-# types.
-[ policy_anything ]
-countryName             = optional
-stateOrProvinceName     = optional
-localityName            = optional
-organizationName        = optional
-organizationalUnitName  = optional
-commonName              = supplied
-emailAddress            = optional
-
-####################################################################
-[ req ]
-default_bits            = 4096
-default_keyfile         = ./private/ca-key.pem
-default_md              = sha1
-
-prompt                  = no
-distinguished_name      = root_ca_distinguished_name
-
-x509_extensions = v3_ca
-
-# Passwords for private keys if not present they will be prompted for
-# input_password = secret
-# output_password = secret
-
-# This sets a mask for permitted string types. There are several options. 
-# default: PrintableString, T61String, BMPString.
-# pkix   : PrintableString, BMPString.
-# utf8only: only UTF8Strings.
-# nombstr : PrintableString, T61String (no BMPStrings or UTF8Strings).
-# MASK:XXXX a literal mask value.
-# WARNING: current versions of Netscape crash on BMPStrings or UTF8Strings
-# so use this option with caution!
-string_mask = nombstr
-
-# req_extensions = v3_req
-
-[ root_ca_distinguished_name ]
-commonName = Micah Reuben Ledbetter (CA)
-countryName = US
-#stateOrProvinceName = 
-#localityName = 
-organizationName = Micah Reuben Ledbetter
-subjectAltName = email:vlack@vlack.com,email:mrled@mrled.org,email:mledbetter@neuric.com
-subjectAltName = DNS:*.mrled.org,DNS:*.younix.us,DNS:*.vlack.com,DNS:*.vlack.ath.cx,DNS:*.vlack.cxm
-emailAddress = vlack+ssl@vlack.com
-
-[ usr_cert ]
-
-# These extensions are added when 'ca' signs a request.
-
-# This goes against PKIX guidelines but some CAs do it and some software
-# requires this to avoid interpreting an end user certificate as a CA.
-
-basicConstraints=CA:FALSE
-
-# PKIX recommendations harmless if included in all certificates.
-subjectKeyIdentifier=hash
-authorityKeyIdentifier=keyid,issuer:always
-
-#nsCaRevocationUrl               = https://www.sial.org/ca-crl.pem
-#nsBaseUrl
-#nsRevocationUrl
-#nsRenewalUrl
-#nsCaPolicyUrl
-#nsSslServerName
-
-[ v3_req ]
-
-# Extensions to add to a certificate request
-
-basicConstraints = CA:FALSE
-keyUsage = nonRepudiation, digitalSignature, keyEncipherment
-
-[ v3_ca ]
-
-
-# Extensions for a typical CA
-
-# PKIX recommendation.
-subjectKeyIdentifier=hash
-authorityKeyIdentifier=keyid:always,issuer:always
-
-# This is what PKIX recommends but some broken software chokes on critical
-# extensions.
-#basicConstraints = critical,CA:true
-# So we do this instead.
-basicConstraints = CA:true
-
-[ crl_ext ]
-
-# CRL extensions.
-# Only issuerAltName and authorityKeyIdentifier make any sense in a CRL.
-
-# issuerAltName=issuer:copy
-authorityKeyIdentifier=keyid:always,issuer:always
-"""
+    emailaddress="micah@micahrl.com"
     
-    client-cnf="""## openssl.cnf for clients. 
-## ALL YOU NEED TO CHANGE ARE THESE LINES:
-## Lines for subjectAltName
-## Lines for commonName
-## You must add a commonName even if you're using subjectAltName entries. 
-## The commonName must be a subjectAltName or some things will shit the bed
+    def genprivkey(self, args):
+        servername=args.servername
+        logging.debug("genprivkey args: %r" % args)
+        subprocess.check_call([opensslbin, "genrsa", "-out", servername+".key", "4096"])
+        configfile=servername+".openssl.cnf"
+        if not (os.path.exists(configfile)):
+            logging.debug("genprivkey: openssl configuration file not present, generating...")
+            f=open(configfile,'w')
+            print(SSLCA.build_server_cnf(self,args),file=f)
+            f.close()
+            #shutil.copy2("server-default.openssl.cnf", servername+".openssl.cnf")
+            #print("Your editor was opened on the file %r; edit the file (REQUIRED) then close your editor to resume operation.")
+            #subprocess.check_call([myeditor, servername+".openssl.cnf"])
+        subprocess.check_call([opensslbin, "req", "-new", "-nodes",
+                               "-config", configfile, "-key", 
+                               servername+".key", "-out", servername+".csr"])
+    
+    def build_server_cnf(self, args):
+        logging.debug("arguments: %r" % args)
+        """Return an openssl.cnf file with the correct emailAddress field, commonName field, and optional subjectAltName section"""
+        # chunk1 is the part before the commonName field
+        # then comes commonName
+        # then emailAddress
+        # then chunk2
+        # then the subjectAltName stuff, if present
+        chunk1= "# server openssl configuration file\r\n"
+        chunk1+="HOME                    = .\r\n"
+        chunk1+="RANDFILE                = $ENV::HOME/.rnd\r\n"
+        chunk1+="\r\n"
+        chunk1+="[ req ]\r\n"
+        chunk1+="default_bits            = 4096\r\n"
+        chunk1+="default_md              = sha1\r\n"
+        chunk1+="prompt                  = no\r\n"
+        chunk1+="string_mask             = nombstr\r\n"
+        chunk1+="\r\n"
+        chunk1+="distinguished_name      = req_distinguished_name\r\n"
+        chunk1+="\r\n"
+        chunk1+="x509_extensions         = v3_req\r\n"
+        chunk1+="req_extensions          = v3_req\r\n"
+        chunk1+="\r\n"
+        chunk1+="[ req_distinguished_name ]\r\n"
+        chunk1+="countryName = US\r\n"
+        chunk1+="stateOrProvinceName = .\r\n"
+        chunk1+="localityName = .\r\n"
+        chunk1+="organizationName = .\r\n"
 
-HOME                    = .
-RANDFILE                = $ENV::HOME/.rnd
+        if (args.commonname):
+            cn = args.commonname
+        else:
+            cn = args.servername
+        cnline= "commonName = " + cn + "\r\n"
+        logging.debug("cn is %r" % cn)
 
-[ req ]
-default_bits            = 4096
-default_md              = sha1
-prompt                  = no
-string_mask             = nombstr
+        emailline= "emailAddress = " + SSLCA.emailaddress + "\r\n"
 
-distinguished_name      = req_distinguished_name
+        chunk2= ""
+        chunk2+="[ v3_req ]\r\n"
+        chunk2+="nsCertType = server\r\n"
+        chunk2+="basicConstraints = CA:FALSE\r\n"
+        chunk2+="keyUsage = nonRepudiation, digitalSignature, keyEncipherment\r\n"
 
-x509_extensions         = v3_req
-req_extensions          = v3_req
+        if (args.altnames):
+            # we need a separate list of ip addresses vs DNS names
+            sanchunk="subjectAltName = @alt_names" + "\r\n\r\n" + "[ alt_names ]" + "\r\n"
+            ip=[] 
+            dns=[]
+            for entry in args.altnames.split(","):
+                # test if this is an IP address by asking the socket module
+                # NOTE: just because it's not a dotted quad doesn't mean it's not valid! 
+                # "4" is a valid IP address! 
+                # this is not ideal b/c openssl doesn't accept IPs that are not dotted quads. <sigh>
+                # NOTE2: currently this doesn't match ipv6 addresses
+                # see also <http://stackoverflow.com/questions/319279/how-to-validate-ip-address-in-python>
+                try:
+                    socket.inet_aton(entry)
+                    ip.append(entry)
+                except:
+                    # assume it's a hostname if it fails the socket test
+                    dns.append(entry)
 
-[ req_distinguished_name ]
-countryName = US
-stateOrProvinceName = .
-localityName = .
-organizationName = .
-commonName = 
-emailAddress = micah@micahrl.com
+            # The commonName MUST also be in the subjectAltName list; if it isn't specified there by the user, add it
+            try: 
+                socket.inet_aton(cn)
+                # looks like cn is an IP address. check for it in the ip list
+                for entry in ip:
+                    if (entry == cn): 
+                        break
+                else:
+                    ip.append(cn)
+            except:
+                # looks cn isn't an IP address, so assume it's a hostname. check for it in the dns list. 
+                for entry in dns:
+                    if (entry == cn): 
+                        break
+                else:
+                    dns.append(cn)
 
-[ v3_req ]
-nsCertType = server
-basicConstraints = CA:FALSE
-keyUsage = nonRepudiation, digitalSignature, keyEncipherment
-subjectAltName = @alt_names
+            seq=1
+            for entry in dns:
+                sanchunk += "DNS." + str(seq) + " = " + entry + '\r\n'
+                seq+=1
+            seq=1
+            for entry in ip:
+                sanchunk += "IP." + str(seq) + " = " + entry + '\r\n'
+                seq+=1
+        else:
+            sanchunk=""
 
+        configfile = chunk1 + cnline + emailline + chunk2 + sanchunk
+        #logging.debug(configfile)
+        #print(configfile)
+        return configfile
 
-[ alt_names ]
-DNS.1 = host1.example.tld
-DNS.2 = *.example.tld
-email.1 = user@example.tld
-IP.1 = 10.0.0.1
-"""
-
-def signcerts(args):
-    logging.debug("signcerts args: %r" % args)
-    for clientname in args.clientname:
+    def print_server_cnf(self, args):
+        print(SSLCA.build_server_cnf(args))
+        
+    def signcerts(self, args):
+        logging.debug("signcerts args: %r" % args)
+        servername = args.servername
         subprocess.check_call([opensslbin, "ca", "-batch", "-config",
-                               "openssl.cnf.ca", "-in", clientname+".csr",
-                               "-out", clientname+".cert", "-days", "7300"])
-
-def gensign(args):
-    logging.debug("gensign args: %r" % args)
-    genprivkey(args)
-    signcerts(args)
-
+                               "ca.openssl.cnf", "-in", servername+".csr",
+                               "-out", servername+".cert", "-days", "7300"])
+    
+    def gensign(self, args):
+        logging.debug("gensign args: %r" % args)
+        SSLCA.genprivkey(self,args)
+        SSLCA.signcerts(self,args)
+    
 
 def main(*args):
+    global sslca
+    sslca=SSLCA()
     #logging.debug("main args: " + args)
     global opensslbin
     global myeditor
@@ -298,20 +196,28 @@ def main(*args):
     argparser = argparse.ArgumentParser(description='Perform basic tasks for a mini-PKI')
     subparsers = argparser.add_subparsers()
     
-    subparser_genkey = subparsers.add_parser('genkey', help='Generate a private key & CRL for a server')
-    subparser_genkey.add_argument('clientname', nargs='+', action='store', help='Supply a clientname, such as myserver or myserver.sub.domain.tld. The filenames for the cert, CRL, etc are based on this name. This subcommand looks for an openssl configuration file named clientname.openssl.cnf; if it does not find one, it will copy openssl.cnf.client-DEFAULT to clientname.openssl.cnf and open your editor on that file.')
-    subparser_genkey.set_defaults(func=genprivkey)
+    subparser_buildcnf = subparsers.add_parser('buildcnf', help="Generate an openssl.cnf file for a server")
+    subparser_buildcnf.add_argument('servername', action='store', help='Supply a servername, such as myserver or myserver.sub.domain.tld. By default, this also specifies a hostname')
+    subparser_buildcnf.add_argument('-c', dest='commonname', action='store', help='Specify a hostname rather than use the servername to use in the config file.')
+    subparser_buildcnf.add_argument('-a', dest='altnames',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
+    subparser_buildcnf.set_defaults(func=sslca.build_server_cnf)
+
+    subparser_genkey = subparsers.add_parser('genkey', help='Generate a private key & CSR for a server')
+    subparser_genkey.add_argument('servername', action='store', help='Supply a servername, such as myserver or myserver.sub.domain.tld. The filenames for the cert, CSR, etc are based on this name. This subcommand also looks for an openssl configuration file named servername.openssl.cnf; if it does not find one, it will generate one for you.')
+    subparser_genkey.add_argument('-c', dest='commonname', action='store', help='Specify a hostname rather than use the servername to use in the config file.')
+    subparser_genkey.add_argument('-a', dest='altnames',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
+    subparser_genkey.set_defaults(func=sslca.genprivkey)
     
-    subparser_sign = subparsers.add_parser('sign', help='Sign a CRL with an existing CA key')
-    subparser_sign.add_argument('clientname', nargs='+', action='store', help='Supply a clientname, such as myserver or myserver.sub.domain.tld. The filenames for the cert, CRL, etc are based on this name.')
-    subparser_sign.set_defaults(func=signcerts)
+    subparser_sign = subparsers.add_parser('sign', help='Sign a CSR with an existing CA key')
+    subparser_sign.add_argument('servername', nargs='+', action='store', help='Supply a servername, such as myserver or myserver.sub.domain.tld. The filenames for the cert, CSR, etc are based on this name.')
+    subparser_sign.set_defaults(func=sslca.signcerts)
 
     subparser_gensign = subparsers.add_parser('gensign', help='Both generate and sign in one step')
-    subparser_gensign.add_argument('clientname', nargs='+', action='store', help='Supply a clientname, such as myserver or myserver.sub.domain.tld. The filenames for the cert, CRL, etc are based on this name. This subcommand looks for an openssl configuration file named clientname.openssl.cnf; if it does not find one, it will copy openssl.cnf.client-DEFAULT to clientname.openssl.cnf and open your editor on that file.')
-    subparser_gensign.set_defaults(func=gensign)
+    subparser_gensign.add_argument('servername', action='store', help='Supply a servername, such as myserver or myserver.sub.domain.tld. The filenames for the cert, CSR, etc are based on this name. This subcommand also looks for an openssl configuration file named servername.openssl.cnf; if it does not find one, it will generate one for you.')
+    subparser_gensign.add_argument('-c', dest='commonname', action='store', help='Specify a hostname rather than use the servername to use in the config file.')
+    subparser_gensign.add_argument('-a', dest='altnames',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
+    subparser_gensign.set_defaults(func=sslca.gensign)
 
-    subparser_cainit = subparsers.add_parser('cainit', help='Initialize a mini-PKI by creating the initial configuration files and printing some help')
-    subparser_cainit.set_defaults(func=cainit)
     
     parsed = argparser.parse_args()
     parsed.func(parsed)
