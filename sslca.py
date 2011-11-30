@@ -9,8 +9,8 @@
 import sys, os, shutil, argparse, logging, subprocess, socket, shutil
 logging.basicConfig(level=logging.CRITICAL) #show only logging.critical() messages
 #logging.basicConfig(level=logging.DEBUG) #show all messages up to and including logging.debug() messages
-keysize=512 #this is for testing purposes only - weak keys, but fast generation
-#keysize=4096 #I prefer large keys like this; others prefer 1024 or 2096
+#keysize=512 #this is for testing purposes only - weak keys, but fast generation
+keysize=4096 #I prefer large keys like this. You might instead prefer 1024 or 2048.
 
 def is_exe(fpath):
     return os.path.exists(fpath) and os.access(fpath, os.X_OK)
@@ -46,7 +46,7 @@ class SSLCA:
                     elif os.path.isdir(p):
                         shutil.rmtree(p)
         else: #not told to purge, so if one of these exists, exit before overwriting something important
-            for p in ["serial.txt", "index.txt", "private", "newcerts", "certs"]:
+            for p in ["serial.txt", "index.txt", "private", "newcerts", "serverkeys"]:
                 if (os.path.exists(p)):
                     print("Path '" + p + "' exists, exiting...")
                     sys.exit(1)
@@ -57,7 +57,7 @@ class SSLCA:
         open("index.txt","w").close() #create an empty file
         os.mkdir("private",700)
         os.mkdir("newcerts",700)
-        os.mkdir("certs",700)
+        os.mkdir("serverkeys",700)
 
         subprocess.check_call([opensslbin, 
                                "req", #request a new key
@@ -65,31 +65,25 @@ class SSLCA:
                                "-nodes",  #"No DES", i.e. don't create an encrypted key (and don't prompt for encryption password)
                                "-x509", #puts out a self-signed cert instead of a csr; required for a CA
                                "-days", "7300", #this is about 20 years, and also the max
-                               "-out", "ca.crt.pem", #will output to stdout otherwise, which we don't want
+                               "-out", "ca.cert.pem", #will output to stdout otherwise, which we don't want
                                "-newkey", "rsa:"+str(keysize), #create an RSA key and store it where specified in cnf
                                ])
 
     def genprivkey(self, args):
         servername=args.servername
         logging.debug("genprivkey args: %r" % args)
-        subprocess.check_call([opensslbin, "genrsa", "-out", servername+".key", str(keysize)])
-        servercnf=servername+".openssl.cnf"
+        subprocess.check_call([opensslbin, "genrsa", "-out", "serverkeys/"+servername+".key", str(keysize)])
+        servercnf="serverkeys/"+servername+".openssl.cnf"
         if not (os.path.exists(servercnf)):
             logging.debug("genprivkey: openssl configuration file not present, generating...")
             SSLCA.makecnf(self,args)
-            #fcnf=open(servercnf,'w')
-            #fcnf.write(SSLCA.build_server_cnf(self,args))
-            #fcnf.close()
-            #shutil.copy2("server-default.openssl.cnf", servername+".openssl.cnf")
-            #print("Your editor was opened on the file %r; edit the file (REQUIRED) then close your editor to resume operation.")
-            #subprocess.check_call([myeditor, servername+".openssl.cnf"])
         subprocess.check_call([opensslbin, 
                                "req", 
                                "-new", 
                                "-nodes",
                                "-config", servercnf, 
-                               "-key", servername+".key", 
-                               "-out", servername+".csr"])
+                               "-key", "serverkeys/"+servername+".key", 
+                               "-out", "serverkeys/"+servername+".csr"])
     
     def build_server_cnf(self, args):
         logging.debug("arguments: %r" % args)
@@ -191,7 +185,7 @@ class SSLCA:
         print(SSLCA.build_server_cnf(args))
 
     def makecnf(self, args):
-        fcnf=open(args.servername+".openssl.cnf",'w')
+        fcnf=open("serverkeys/"+args.servername+".openssl.cnf",'w')
         fcnf.write(SSLCA.build_server_cnf(self,args))
         fcnf.close()
         
@@ -199,8 +193,8 @@ class SSLCA:
         logging.debug("signcerts args: %r" % args)
         servername = args.servername
         subprocess.check_call([opensslbin, "ca", "-batch", "-config",
-                               "ca.openssl.cnf", "-in", servername+".csr",
-                               "-out", servername+".cert", "-days", "7300"])
+                               "ca.openssl.cnf", "-in", "serverkeys/"+servername+".csr",
+                               "-out", "serverkeys/"+servername+".cert", "-days", "7300"])
     
     def gensign(self, args):
         logging.debug("gensign args: %r" % args)
@@ -208,10 +202,10 @@ class SSLCA:
         SSLCA.signcerts(self,args)
 
     def examinecsr(self, args):
-        if os.path.exists(args.csrfile):
-            csrfile=args.csrfile
-        elif os.path.exists(args.csrfile+".csr"): # in case it was specified as "servername" instead of "servername.csr"
-            csrfile=args.csrfile+".csr"
+        for p in [args.csrfile, args.csrfile+".csr", "serverkeys/"+args.csrfile, "serverkeys/"+args.csrfile+".csr"]:
+            if os.path.exists(p):
+                csrfile=p
+                break
         else:
             print("No such CSR file '" + args.csrfile + "', exiting...")
             sys.exit(1)
@@ -222,7 +216,6 @@ def main(*args):
     sslca=SSLCA()
     #logging.debug("main args: " + args)
     global opensslbin
-    global myeditor
     if (os.name == 'nt'):
         inpath=which("openssl.exe")
         if (inpath):
@@ -241,7 +234,7 @@ def main(*args):
                 # if after all that we have nothing, exit
                 print("Can't find OpenSSL binary. Try adding the location of openssl.exe to your PATH environment variable. Exiting...")
                 sys.exit(1)
-        myeditor=r"C:\Windows\system32\notepad.exe"
+
     elif (os.name == 'posix'):
         # for POSIX systems we're just going to assume that openssl is in the path and $EDITOR is an existing env var. 
         inpath=which("openssl")
@@ -250,7 +243,6 @@ def main(*args):
         else:
             print("Can't find OpenSSL binary. Exiting...")
             sys.exit(1)
-        myeditor=os.environ['EDITOR']
 
     argparser = argparse.ArgumentParser(description='Perform basic tasks for a mini-PKI')
     subparsers = argparser.add_subparsers()
