@@ -2,7 +2,7 @@
 
 This tool is a Python wrapper script for OpenSSL. I use it to keep track of the two tiny PKIs that I administer - one for home, and one for a client. 
 
-It's inteded for use by people who handle the whole infrastructure themselves. For me, the priviledge separation of creating a key on one host, generating a CSR, copying the CSR to the CA, signing the CSR, and copying the cert back to the host isn't (usually) very useful since I'm doing everything myself anyway.
+It's inteded for use by people who handle the whole infrastructure themselves. For me, the priviledge separation of creating a key on one host, generating a CSR, copying the CSR to the CA, signing the CSR, and copying the cert back to the host isn't very useful since I'm doing everything myself anyway.
 
 ## Requirements
 
@@ -55,6 +55,10 @@ As you can see, the altnames stuff is optional, but I run into it a lot (and it 
 - if you want to access the server by IP address as well as domain name
 - if sometimes you want to use its FQDN (like <https://beerbread.example.com>) and sometimes just by its hostname (like <https://beerbread>)
 - if you want to use the same cert to secure services both inside and outside of a NAT (e.g. if your internal hostname is beerbread.is.the.greatest but your external hostname is beerbread.dyndns.com)
+
+## Creating a certificate authority for use with sslca.py
+
+See the [[opensslcnf]] page for details about OpenSSL configuration options. 
 
 ## Security
 
