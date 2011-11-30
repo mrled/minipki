@@ -13,16 +13,16 @@ organizationName        = Micah Reuben Ledbetter
 emailAddress            = micah@micahrl.com
 
 [ ca ]
-#default_ca      = CA_default
-#
-#[ CA_default ]
+default_ca      = CA_default
+
+[ CA_default ]
 dir             = .
 #certs           = $dir/certs
 new_certs_dir   = $dir/newcerts
 crl_dir         = $dir/crl
 database        = $dir/index.txt
 
-certificate     = $dir/ca.crt.pem
+certificate     = $dir/ca.cert.pem
 serial          = $dir/serial.txt
 crl             = $dir/ca.crl.pem
 private_key     = $dir/private/ca.key.pem
