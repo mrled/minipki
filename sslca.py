@@ -6,9 +6,11 @@
 # - http://sial.org/howto/openssl/ca/
 # - http://www.openssl.org/docs/apps/ca.html
 
-import sys, os, shutil, argparse, logging, subprocess, socket
+import sys, os, shutil, argparse, logging, subprocess, socket, shutil
 logging.basicConfig(level=logging.CRITICAL) #show only logging.critical() messages
 #logging.basicConfig(level=logging.DEBUG) #show all messages up to and including logging.debug() messages
+keysize=512 #this is for testing purposes only - weak keys, but fast generation
+#keysize=4096 #I prefer large keys like this; others prefer 1024 or 2096
 
 def is_exe(fpath):
     return os.path.exists(fpath) and os.access(fpath, os.X_OK)
@@ -26,25 +28,68 @@ def which(program):
     return None
 
 class SSLCA:
-
-    emailaddress="micah@micahrl.com"
     
+    # these are for *client* certs. The CA configuration must be handled separately!
+    emailaddress="micah@micahrl.com"
+
+    def initca(self, args):
+        cacnf = "ca.openssl.cnf"
+        if not (os.path.exists(cacnf)):
+            print("No CA configuration file exists in the current directory. Exiting...")
+            sys.exit(1)
+
+        if args.purge: #purge everything except ca.openssl.cnf
+            for p in os.listdir("."): 
+                if not p == cacnf: #delete all files/directories *except* the openssl.cnf file
+                    if os.path.isfile(p) or os.path.islink(p): #os.unlink() handles both cases
+                        os.unlink(p)
+                    elif os.path.isdir(p):
+                        shutil.rmtree(p)
+        else: #not told to purge, so if one of these exists, exit before overwriting something important
+            for p in ["serial.txt", "index.txt", "private", "newcerts", "certs"]:
+                if (os.path.exists(p)):
+                    print("Path '" + p + "' exists, exiting...")
+                    sys.exit(1)
+
+        fserial=open("serial.txt","w")
+        fserial.write("01")
+        fserial.close()
+        open("index.txt","w").close() #create an empty file
+        os.mkdir("private",700)
+        os.mkdir("newcerts",700)
+        os.mkdir("certs",700)
+
+        subprocess.check_call([opensslbin, 
+                               "req", #request a new key
+                               "-config", cacnf,
+                               "-nodes",  #"No DES", i.e. don't create an encrypted key (and don't prompt for encryption password)
+                               "-x509", #puts out a self-signed cert instead of a csr; required for a CA
+                               "-days", "7300", #this is about 20 years, and also the max
+                               "-out", "ca.crt.pem", #will output to stdout otherwise, which we don't want
+                               "-newkey", "rsa:"+str(keysize), #create an RSA key and store it where specified in cnf
+                               ])
+
     def genprivkey(self, args):
         servername=args.servername
         logging.debug("genprivkey args: %r" % args)
-        subprocess.check_call([opensslbin, "genrsa", "-out", servername+".key", "4096"])
-        configfile=servername+".openssl.cnf"
-        if not (os.path.exists(configfile)):
+        subprocess.check_call([opensslbin, "genrsa", "-out", servername+".key", str(keysize)])
+        servercnf=servername+".openssl.cnf"
+        if not (os.path.exists(servercnf)):
             logging.debug("genprivkey: openssl configuration file not present, generating...")
-            f=open(configfile,'w')
-            print(SSLCA.build_server_cnf(self,args),file=f)
-            f.close()
+            SSLCA.makecnf(self,args)
+            #fcnf=open(servercnf,'w')
+            #fcnf.write(SSLCA.build_server_cnf(self,args))
+            #fcnf.close()
             #shutil.copy2("server-default.openssl.cnf", servername+".openssl.cnf")
             #print("Your editor was opened on the file %r; edit the file (REQUIRED) then close your editor to resume operation.")
             #subprocess.check_call([myeditor, servername+".openssl.cnf"])
-        subprocess.check_call([opensslbin, "req", "-new", "-nodes",
-                               "-config", configfile, "-key", 
-                               servername+".key", "-out", servername+".csr"])
+        subprocess.check_call([opensslbin, 
+                               "req", 
+                               "-new", 
+                               "-nodes",
+                               "-config", servercnf, 
+                               "-key", servername+".key", 
+                               "-out", servername+".csr"])
     
     def build_server_cnf(self, args):
         logging.debug("arguments: %r" % args)
@@ -59,7 +104,7 @@ class SSLCA:
         chunk1+="RANDFILE                = $ENV::HOME/.rnd\r\n"
         chunk1+="\r\n"
         chunk1+="[ req ]\r\n"
-        chunk1+="default_bits            = 4096\r\n"
+        chunk1+="default_bits            = " + str(keysize) + "\r\n"
         chunk1+="default_md              = sha1\r\n"
         chunk1+="prompt                  = no\r\n"
         chunk1+="string_mask             = nombstr\r\n"
@@ -137,13 +182,18 @@ class SSLCA:
         else:
             sanchunk=""
 
-        configfile = chunk1 + cnline + emailline + chunk2 + sanchunk
-        #logging.debug(configfile)
-        #print(configfile)
-        return configfile
+        servercnf = chunk1 + cnline + emailline + chunk2 + sanchunk
+        #logging.debug(servercnf)
+        #print(servercnf)
+        return servercnf
 
-    def print_server_cnf(self, args):
+    def printcnf(self, args):
         print(SSLCA.build_server_cnf(args))
+
+    def makecnf(self, args):
+        fcnf=open(args.servername+".openssl.cnf",'w')
+        fcnf.write(SSLCA.build_server_cnf(self,args))
+        fcnf.close()
         
     def signcerts(self, args):
         logging.debug("signcerts args: %r" % args)
@@ -156,7 +206,16 @@ class SSLCA:
         logging.debug("gensign args: %r" % args)
         SSLCA.genprivkey(self,args)
         SSLCA.signcerts(self,args)
-    
+
+    def examinecsr(self, args):
+        if os.path.exists(args.csrfile):
+            csrfile=args.csrfile
+        elif os.path.exists(args.csrfile+".csr"): # in case it was specified as "servername" instead of "servername.csr"
+            csrfile=args.csrfile+".csr"
+        else:
+            print("No such CSR file '" + args.csrfile + "', exiting...")
+            sys.exit(1)
+        subprocess.check_call([opensslbin, "req", "-in", csrfile, "-noout", "-text"])
 
 def main(*args):
     global sslca
@@ -196,11 +255,15 @@ def main(*args):
     argparser = argparse.ArgumentParser(description='Perform basic tasks for a mini-PKI')
     subparsers = argparser.add_subparsers()
     
-    subparser_buildcnf = subparsers.add_parser('buildcnf', help="Generate an openssl.cnf file for a server")
-    subparser_buildcnf.add_argument('servername', action='store', help='Supply a servername, such as myserver or myserver.sub.domain.tld. By default, this also specifies a hostname')
-    subparser_buildcnf.add_argument('-c', dest='commonname', action='store', help='Specify a hostname rather than use the servername to use in the config file.')
-    subparser_buildcnf.add_argument('-a', dest='altnames',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
-    subparser_buildcnf.set_defaults(func=sslca.build_server_cnf)
+    subparser_makecnf = subparsers.add_parser('makecnf', help="Generate an openssl.cnf file for a server")
+    subparser_makecnf.add_argument('servername', action='store', help='Supply a servername, such as myserver or myserver.sub.domain.tld. By default, this also specifies a hostname')
+    subparser_makecnf.add_argument('-c', dest='commonname', action='store', help='Specify a hostname rather than use the servername to use in the config file.')
+    subparser_makecnf.add_argument('-a', dest='altnames',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
+    subparser_makecnf.set_defaults(func=sslca.makecnf)
+
+    subparser_examinecsr = subparsers.add_parser('examinecsr', help="Examine an existing CSR")
+    subparser_examinecsr.add_argument('csrfile', action='store', help='Supply the path to a .csr file')
+    subparser_examinecsr.set_defaults(func=sslca.examinecsr)
 
     subparser_genkey = subparsers.add_parser('genkey', help='Generate a private key & CSR for a server')
     subparser_genkey.add_argument('servername', action='store', help='Supply a servername, such as myserver or myserver.sub.domain.tld. The filenames for the cert, CSR, etc are based on this name. This subcommand also looks for an openssl configuration file named servername.openssl.cnf; if it does not find one, it will generate one for you.')
@@ -217,6 +280,10 @@ def main(*args):
     subparser_gensign.add_argument('-c', dest='commonname', action='store', help='Specify a hostname rather than use the servername to use in the config file.')
     subparser_gensign.add_argument('-a', dest='altnames',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
     subparser_gensign.set_defaults(func=sslca.gensign)
+
+    subparser_initca = subparsers.add_parser('initca', help='Initialize a Certificate Authority in this directory (requires existing ca.openssl.cnf file')
+    subparser_initca.add_argument('--purge', '-p', action='store_true', help='THIS OPTION WILL DELETE ALL FILES IN THE CURRENT DIRECTORY, except for ca.openssl.cnf.')
+    subparser_initca.set_defaults(func=sslca.initca)
 
     
     parsed = argparser.parse_args()
