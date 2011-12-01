@@ -36,17 +36,17 @@ The `--ca_commonName` argument is required, but the rest are optional.
 If you already have a CA, you'll need to make sure the layout is the same as I expect. 
 
 - The CA directory
-  - newcerts/
-    - each signed certificate, stored as $serialnumber.pem, such as 01.pem, 02.pem, etc
-  - private/
+    - newcerts/
+        - each signed certificate, stored as $serialnumber.pem, such as 01.pem, 02.pem, etc
+    - private/
     - ca.key.pem
-  - serverkeys/
-    - this can be empty; it's where the new keys, certs, cnf files, and crls for servers will be saved
-  - ca.crt.pem
-  - ca.openssl.cnf
-    - you'll need to make sure that this hierarchy is also reflected in your ca.openssl.cnf file! 
-  - index.txt
-  - serial.txt
+    - serverkeys/
+        - this can be empty; it's where the new keys, certs, cnf files, and crls for servers will be saved
+    - ca.crt.pem
+    - ca.openssl.cnf
+        - you'll need to make sure that this hierarchy is also reflected in your ca.openssl.cnf file! 
+    - index.txt
+    - serial.txt
 
 ### Generating certs for servers
 
