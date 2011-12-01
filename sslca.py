@@ -7,7 +7,6 @@
 # - http://www.openssl.org/docs/apps/ca.html
 
 import sys, os, shutil, argparse, logging, subprocess, socket, shutil
-logging.basicConfig(level=logging.CRITICAL) #show only logging.critical() messages
 #logging.basicConfig(level=logging.DEBUG) #show all messages up to and including logging.debug() messages
 #keysize=512 #this is for testing purposes only - weak keys, but fast generation
 keysize=4096 #I prefer large keys like this. You might instead prefer 1024 or 2048.
@@ -28,28 +27,26 @@ def which(program):
     return None
 
 class SSLCA:
-    
-    # these are for *client* certs. The CA configuration must be handled separately!
-    emailaddress="micah@micahrl.com"
 
     def initca(self, args):
         cacnf = "ca.openssl.cnf"
-        if not (os.path.exists(cacnf)):
-            print("No CA configuration file exists in the current directory. Exiting...")
-            sys.exit(1)
 
         if args.purge: #purge everything except ca.openssl.cnf
             for p in os.listdir("."): 
-                if not p == cacnf: #delete all files/directories *except* the openssl.cnf file
-                    if os.path.isfile(p) or os.path.islink(p): #os.unlink() handles both cases
-                        os.unlink(p)
-                    elif os.path.isdir(p):
-                        shutil.rmtree(p)
+                if os.path.isfile(p) or os.path.islink(p): #os.unlink() handles both cases
+                    os.unlink(p)
+                elif os.path.isdir(p):
+                    shutil.rmtree(p)
         else: #not told to purge, so if one of these exists, exit before overwriting something important
-            for p in ["serial.txt", "index.txt", "private", "newcerts", "serverkeys"]:
+            for p in ["serial.txt", "index.txt", "private", "newcerts", "serverkeys", cacnf]:
                 if (os.path.exists(p)):
                     print("Path '" + p + "' exists, exiting...")
                     sys.exit(1)
+
+        #if not (os.path.exists(cacnf)):
+        fcnf=open(cacnf,'w')
+        fcnf.write(SSLCA.build_ca_cnf(self,args))
+        fcnf.close()
 
         fserial=open("serial.txt","w")
         fserial.write("01")
@@ -84,6 +81,104 @@ class SSLCA:
                                "-config", servercnf, 
                                "-key", "serverkeys/"+servername+".key", 
                                "-out", "serverkeys/"+servername+".csr"])
+
+    def build_ca_cnf(self, args):
+        # chunk1 is the stuff before the user settings
+        # then come a few user-customizable things
+        # then comes chunk2, the bulk of the file
+
+        chunk1 ="\n"
+        chunk1+="# openssl.cnf.ca\n"
+        chunk1+="# Via sslca.py\n"
+        chunk1+="\n"
+        chunk1+="HOME                    = .\n"
+        chunk1+="RANDFILE                = $ENV::HOME/.rnd\n"
+        chunk1+="\n"
+        chunk1+="[ root_ca_distinguished_name ]\n"
+
+        # this is checked by argparse so we know it exists
+        userchunk = "commonName = " + args.ca_commonName + "\n"
+        if args.emailAddress:
+            userchunk += "emailAddress = " + args.emailAddress + "\n"
+        if args.countryName:
+            userchunk += "countryName = " + args.countryName + "\n"
+        if args.stateOrProvinceName:
+            userchunk += "stateOrProvinceName = " + args.stateOrProvinceName + "\n"
+        if args.localityName:
+            userchunk += "localityName = " + args.localityName + "\n"
+        if args.organizationName:
+            userchunk += "organizationName = " + args.organizationName + "\n"
+
+        chunk2 ="\n"
+        chunk2+="[ ca ]\n"
+        chunk2+="default_ca      = CA_default\n"
+        chunk2+="\n"
+        chunk2+="[ CA_default ]\n"
+        chunk2+="dir             = .\n"
+        chunk2+="#certs           = $dir/certs\n"
+        chunk2+="new_certs_dir   = $dir/newcerts\n"
+        chunk2+="crl_dir         = $dir/crl\n"
+        chunk2+="database        = $dir/index.txt\n"
+        chunk2+="\n"
+        chunk2+="certificate     = $dir/ca.cert.pem\n"
+        chunk2+="serial          = $dir/serial.txt\n"
+        chunk2+="crl             = $dir/ca.crl.pem\n"
+        chunk2+="private_key     = $dir/private/ca.key.pem\n"
+        chunk2+="RANDFILE        = $dir/private/.rand\n"
+        chunk2+="x509_extensions = usr_cert\n"
+        chunk2+="copy_extensions	= copy\n"
+        chunk2+="unique_subject  = no\n"
+        chunk2+="name_opt        = ca_default\n"
+        chunk2+="cert_opt        = ca_default\n"
+        chunk2+="default_crl_days= 30\n"
+        chunk2+="default_days    = 365\n"
+        chunk2+="default_md      = sha1\n"
+        chunk2+="preserve        = no\n"
+        chunk2+="policy          = policy_ca\n"
+        chunk2+="\n"
+        chunk2+="[ policy_ca ]\n"
+        chunk2+="countryName             = optional\n"
+        chunk2+="stateOrProvinceName     = optional\n"
+        chunk2+="organizationName        = optional\n"
+        chunk2+="organizationalUnitName  = optional\n"
+        chunk2+="commonName              = supplied\n"
+        chunk2+="emailAddress            = optional\n"
+        chunk2+="\n"
+        chunk2+="[ policy_anything ]\n"
+        chunk2+="countryName             = optional\n"
+        chunk2+="stateOrProvinceName     = optional\n"
+        chunk2+="localityName            = optional\n"
+        chunk2+="organizationName        = optional\n"
+        chunk2+="organizationalUnitName  = optional\n"
+        chunk2+="commonName              = supplied\n"
+        chunk2+="emailAddress            = optional\n"
+        chunk2+="\n"
+        chunk2+="[ req ]\n"
+        chunk2+="default_bits            = 4096\n"
+        chunk2+="default_keyfile         = ./private/ca.key.pem\n"
+        chunk2+="default_md              = sha1\n"
+        chunk2+="prompt                  = no\n"
+        chunk2+="distinguished_name      = root_ca_distinguished_name\n"
+        chunk2+="x509_extensions         = v3_ca\n"
+        chunk2+="string_mask             = nombstr\n"
+        chunk2+="req_extensions          = v3_req\n"
+        chunk2+="\n"
+        chunk2+="[ usr_cert ]\n"
+        chunk2+="basicConstraints        = CA:FALSE\n"
+        chunk2+="subjectKeyIdentifier    = hash\n"
+        chunk2+="authorityKeyIdentifier  = keyid,issuer:always\n"
+        chunk2+="\n"
+        chunk2+="[ v3_req ]\n"
+        chunk2+="basicConstraints        = CA:FALSE\n"
+        chunk2+="keyUsage                = nonRepudiation, digitalSignature, keyEncipherment\n"
+        chunk2+="\n"
+        chunk2+="[ v3_ca ]\n"
+        chunk2+="subjectKeyIdentifier    = hash\n"
+        chunk2+="authorityKeyIdentifier  = keyid:always,issuer:always\n"
+        chunk2+="basicConstraints        = CA:true\n"
+
+        finalcnf = chunk1 + userchunk + chunk2
+        return finalcnf
     
     def build_server_cnf(self, args):
         logging.debug("arguments: %r" % args)
@@ -93,45 +188,45 @@ class SSLCA:
         # then emailAddress
         # then chunk2
         # then the subjectAltName stuff, if present
-        chunk1= "# server openssl configuration file\r\n"
-        chunk1+="HOME                    = .\r\n"
-        chunk1+="RANDFILE                = $ENV::HOME/.rnd\r\n"
-        chunk1+="\r\n"
-        chunk1+="[ req ]\r\n"
-        chunk1+="default_bits            = " + str(keysize) + "\r\n"
-        chunk1+="default_md              = sha1\r\n"
-        chunk1+="prompt                  = no\r\n"
-        chunk1+="string_mask             = nombstr\r\n"
-        chunk1+="\r\n"
-        chunk1+="distinguished_name      = req_distinguished_name\r\n"
-        chunk1+="\r\n"
-        chunk1+="x509_extensions         = v3_req\r\n"
-        chunk1+="req_extensions          = v3_req\r\n"
-        chunk1+="\r\n"
-        chunk1+="[ req_distinguished_name ]\r\n"
-        chunk1+="countryName = US\r\n"
-        chunk1+="stateOrProvinceName = .\r\n"
-        chunk1+="localityName = .\r\n"
-        chunk1+="organizationName = .\r\n"
+        chunk1= "# server openssl configuration file\n"
+        chunk1+="HOME                    = .\n"
+        chunk1+="RANDFILE                = $ENV::HOME/.rnd\n"
+        chunk1+="\n"
+        chunk1+="[ req ]\n"
+        chunk1+="default_bits            = " + str(keysize) + "\n"
+        chunk1+="default_md              = sha1\n"
+        chunk1+="prompt                  = no\n"
+        chunk1+="string_mask             = nombstr\n"
+        chunk1+="\n"
+        chunk1+="distinguished_name      = req_distinguished_name\n"
+        chunk1+="\n"
+        chunk1+="x509_extensions         = v3_req\n"
+        chunk1+="req_extensions          = v3_req\n"
+        chunk1+="\n"
+        chunk1+="[ req_distinguished_name ]\n"
+        chunk1+="countryName = US\n"
+        chunk1+="stateOrProvinceName = .\n"
+        chunk1+="localityName = .\n"
+        chunk1+="organizationName = .\n"
 
         if (args.commonname):
             cn = args.commonname
         else:
             cn = args.servername
-        cnline= "commonName = " + cn + "\r\n"
+        cnline= "commonName = " + cn + "\n"
         logging.debug("cn is %r" % cn)
 
-        emailline= "emailAddress = " + SSLCA.emailaddress + "\r\n"
+        emailline= "emailAddress = " + SSLCA.emailaddress + "\n"
 
         chunk2= ""
-        chunk2+="[ v3_req ]\r\n"
-        chunk2+="nsCertType = server\r\n"
-        chunk2+="basicConstraints = CA:FALSE\r\n"
-        chunk2+="keyUsage = nonRepudiation, digitalSignature, keyEncipherment\r\n"
+        chunk2+="[ v3_req ]\n"
+        chunk2+="nsCertType = server\n"
+        chunk2+="basicConstraints = CA:FALSE\n"
+        chunk2+="keyUsage = nonRepudiation, digitalSignature, keyEncipherment\n"
 
         if (args.altnames):
             # we need a separate list of ip addresses vs DNS names
-            sanchunk="subjectAltName = @alt_names" + "\r\n\r\n" + "[ alt_names ]" + "\r\n"
+            sanchunk="subjectAltName = @alt_names" + "\n\n" + "[ alt_names ]" + "\n"
             ip=[] 
             dns=[]
             for entry in args.altnames.split(","):
@@ -167,14 +262,14 @@ class SSLCA:
 
             seq=1
             for entry in dns:
-                sanchunk += "DNS." + str(seq) + " = " + entry + '\r\n'
+                sanchunk += "DNS." + str(seq) + " = " + entry + '\n'
                 seq+=1
             seq=1
             for entry in ip:
-                sanchunk += "IP." + str(seq) + " = " + entry + '\r\n'
+                sanchunk += "IP." + str(seq) + " = " + entry + '\n'
                 seq+=1
         else:
-            sanchunk=""
+            sanchunk="\n"
 
         servercnf = chunk1 + cnline + emailline + chunk2 + sanchunk
         #logging.debug(servercnf)
@@ -274,10 +369,15 @@ def main(*args):
     subparser_gensign.set_defaults(func=sslca.gensign)
 
     subparser_initca = subparsers.add_parser('initca', help='Initialize a Certificate Authority in this directory (requires existing ca.openssl.cnf file')
+    subparser_initca.add_argument('--ca_commonName', '--commonName', dest='ca_commonName',action='store', required=True, help='REQUIRED. Provide a commonName for your new CA.')
+    subparser_initca.add_argument('--organizationName', action='store', help='Recommended. Provide an organization name to be included on the CA certificate and any subsequent server certificates.')
+    subparser_initca.add_argument('--emailAddress', action='store', help='Recommended. Provide an email address to be included on the CA certificate and any subsequent server certificates.')
+    subparser_initca.add_argument('--countryName', action='store', help='Provide a country name to be included on the CA certificate and any subsequent server certificates.')
+    subparser_initca.add_argument('--stateOrProvinceName', action='store', help='Provide a state or province name to be included on the CA certificate and any subsequent server certificates.')
+    subparser_initca.add_argument('--localityName', action='store', help='Provide a locality name to be included on the CA certificate and any subsequent server certificates.')
     subparser_initca.add_argument('--purge', '-p', action='store_true', help='THIS OPTION WILL DELETE ALL FILES IN THE CURRENT DIRECTORY, except for ca.openssl.cnf.')
     subparser_initca.set_defaults(func=sslca.initca)
 
-    
     parsed = argparser.parse_args()
     parsed.func(parsed)
 
