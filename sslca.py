@@ -344,8 +344,8 @@ def main(*args):
     
     subparser_makecnf = subparsers.add_parser('makecnf', help="Generate an openssl.cnf file for a server")
     subparser_makecnf.add_argument('servername', action='store', help='Supply a servername, such as myserver or myserver.sub.domain.tld. By default, this also specifies a hostname')
-    subparser_makecnf.add_argument('-c', dest='commonname', action='store', help='Specify a hostname rather than use the servername to use in the config file.')
-    subparser_makecnf.add_argument('-a', dest='altnames',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
+    subparser_makecnf.add_argument('--commonName', '-c', dest='commonname', action='store', help='Specify a hostname rather than use the servername to use in the config file.')
+    subparser_makecnf.add_argument('--subjectAltName', '-a', dest='altnames',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
     subparser_makecnf.set_defaults(func=sslca.makecnf)
 
     subparser_examinecsr = subparsers.add_parser('examinecsr', help="Examine an existing CSR")
@@ -354,8 +354,8 @@ def main(*args):
 
     subparser_genkey = subparsers.add_parser('genkey', help='Generate a private key & CSR for a server')
     subparser_genkey.add_argument('servername', action='store', help='Supply a servername, such as myserver or myserver.sub.domain.tld. The filenames for the cert, CSR, etc are based on this name. This subcommand also looks for an openssl configuration file named servername.openssl.cnf; if it does not find one, it will generate one for you.')
-    subparser_genkey.add_argument('-c', dest='commonname', action='store', help='Specify a hostname rather than use the servername to use in the config file.')
-    subparser_genkey.add_argument('-a', dest='altnames',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
+    subparser_genkey.add_argument('--commonName', '-c', dest='commonname', action='store', help='Specify a hostname rather than use the servername to use in the config file.')
+    subparser_genkey.add_argument('--subjectAltName', '-a', dest='altnames',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
     subparser_genkey.set_defaults(func=sslca.genprivkey)
     
     subparser_sign = subparsers.add_parser('sign', help='Sign a CSR with an existing CA key')
@@ -364,18 +364,18 @@ def main(*args):
 
     subparser_gensign = subparsers.add_parser('gensign', help='Both generate and sign in one step')
     subparser_gensign.add_argument('servername', action='store', help='Supply a servername, such as myserver or myserver.sub.domain.tld. The filenames for the cert, CSR, etc are based on this name. This subcommand also looks for an openssl configuration file named servername.openssl.cnf; if it does not find one, it will generate one for you.')
-    subparser_gensign.add_argument('-c', dest='commonname', action='store', help='Specify a hostname rather than use the servername to use in the config file.')
-    subparser_gensign.add_argument('-a', dest='altnames',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
+    subparser_gensign.add_argument('--commonName', '-c', dest='commonname', action='store', help='Specify a hostname rather than use the servername to use in the config file.')
+    subparser_gensign.add_argument('--subjectAltName', '-a', dest='altnames',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
     subparser_gensign.set_defaults(func=sslca.gensign)
 
-    subparser_initca = subparsers.add_parser('initca', help='Initialize a Certificate Authority in this directory (requires existing ca.openssl.cnf file')
+    subparser_initca = subparsers.add_parser('initca', help='Initialize a Certificate Authority in this directory')
     subparser_initca.add_argument('--ca_commonName', '--commonName', dest='ca_commonName',action='store', required=True, help='REQUIRED. Provide a commonName for your new CA.')
     subparser_initca.add_argument('--organizationName', action='store', help='Recommended. Provide an organization name to be included on the CA certificate and any subsequent server certificates.')
     subparser_initca.add_argument('--emailAddress', action='store', help='Recommended. Provide an email address to be included on the CA certificate and any subsequent server certificates.')
     subparser_initca.add_argument('--countryName', action='store', help='Provide a country name to be included on the CA certificate and any subsequent server certificates.')
     subparser_initca.add_argument('--stateOrProvinceName', action='store', help='Provide a state or province name to be included on the CA certificate and any subsequent server certificates.')
     subparser_initca.add_argument('--localityName', action='store', help='Provide a locality name to be included on the CA certificate and any subsequent server certificates.')
-    subparser_initca.add_argument('--purge', '-p', action='store_true', help='THIS OPTION WILL DELETE ALL FILES IN THE CURRENT DIRECTORY, except for ca.openssl.cnf.')
+    subparser_initca.add_argument('--purge', '-p', action='store_true', help='THIS OPTION WILL DELETE ALL FILES IN THE CURRENT DIRECTORY. It is really intended just for debugging.')
     subparser_initca.set_defaults(func=sslca.initca)
 
     parsed = argparser.parse_args()
