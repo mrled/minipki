@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- mode: python -*-
 
 # minipki
 # Author: Micah R Ledbetter
@@ -6,7 +7,7 @@
 # - http://sial.org/howto/openssl/ca/
 # - http://www.openssl.org/docs/apps/ca.html
 
-import sys, os, shutil, argparse, logging, subprocess, socket, shutil
+import sys, os, shutil, argparse, logging, subprocess, socket, re
 #logging.basicConfig(level=logging.DEBUG) #show all messages up to and including logging.debug() messages
 #keysize=512 #this is for testing purposes only - weak keys, but fast generation
 keysize=4096 #I prefer large keys like this. You might instead prefer 1024 or 2048.
@@ -216,7 +217,16 @@ class MINIPKI:
         cnline= "commonName = " + cn + "\n"
         logging.debug("cn is %r" % cn)
 
-        emailline= "emailAddress = " + MINIPKI.emailaddress + "\n"
+        # pull email address out of CA config file - probably need to figure out a better way to do this
+        # it assumes there's only one emailAddress line
+        fcacnf=open('ca.openssl.cnf','r')
+        emailexpr = re.compile('emailAddress.*@.*')
+        for line in fcacnf:
+            match = emailexpr.search(line)
+            if match != None:
+                emailline = match.string
+                break #to find only the first one
+        fcacnf.close()
 
         chunk2= ""
         chunk2+="[ v3_req ]\n"
@@ -383,4 +393,5 @@ def main(*args):
 
 if __name__ == '__main__':
     sys.exit(main(*sys.argv))
+
 
