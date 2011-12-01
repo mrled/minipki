@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# sslca.py
+# minipki
 # Author: Micah R Ledbetter
 # Acknowledgements: 
 # - http://sial.org/howto/openssl/ca/
@@ -26,7 +26,7 @@ def which(program):
                 return exe_file
     return None
 
-class SSLCA:
+class MINIPKI:
 
     def initca(self, args):
         cacnf = "ca.openssl.cnf"
@@ -45,7 +45,7 @@ class SSLCA:
 
         #if not (os.path.exists(cacnf)):
         fcnf=open(cacnf,'w')
-        fcnf.write(SSLCA.build_ca_cnf(self,args))
+        fcnf.write(MINIPKI.build_ca_cnf(self,args))
         fcnf.close()
 
         fserial=open("serial.txt","w")
@@ -73,7 +73,7 @@ class SSLCA:
         servercnf="serverkeys/"+servername+".openssl.cnf"
         if not (os.path.exists(servercnf)):
             logging.debug("genprivkey: openssl configuration file not present, generating...")
-            SSLCA.makecnf(self,args)
+            MINIPKI.makecnf(self,args)
         subprocess.check_call([opensslbin, 
                                "req", 
                                "-new", 
@@ -89,7 +89,7 @@ class SSLCA:
 
         chunk1 ="\n"
         chunk1+="# openssl.cnf.ca\n"
-        chunk1+="# Via sslca.py\n"
+        chunk1+="# Via minipki\n"
         chunk1+="\n"
         chunk1+="HOME                    = .\n"
         chunk1+="RANDFILE                = $ENV::HOME/.rnd\n"
@@ -216,7 +216,7 @@ class SSLCA:
         cnline= "commonName = " + cn + "\n"
         logging.debug("cn is %r" % cn)
 
-        emailline= "emailAddress = " + SSLCA.emailaddress + "\n"
+        emailline= "emailAddress = " + MINIPKI.emailaddress + "\n"
 
         chunk2= ""
         chunk2+="[ v3_req ]\n"
@@ -277,11 +277,11 @@ class SSLCA:
         return servercnf
 
     def printcnf(self, args):
-        print(SSLCA.build_server_cnf(args))
+        print(MINIPKI.build_server_cnf(args))
 
     def makecnf(self, args):
         fcnf=open("serverkeys/"+args.servername+".openssl.cnf",'w')
-        fcnf.write(SSLCA.build_server_cnf(self,args))
+        fcnf.write(MINIPKI.build_server_cnf(self,args))
         fcnf.close()
         
     def signcerts(self, args):
@@ -293,8 +293,8 @@ class SSLCA:
     
     def gensign(self, args):
         logging.debug("gensign args: %r" % args)
-        SSLCA.genprivkey(self,args)
-        SSLCA.signcerts(self,args)
+        MINIPKI.genprivkey(self,args)
+        MINIPKI.signcerts(self,args)
 
     def examinecsr(self, args):
         for p in [args.csrfile, args.csrfile+".csr", "serverkeys/"+args.csrfile, "serverkeys/"+args.csrfile+".csr"]:
@@ -307,8 +307,8 @@ class SSLCA:
         subprocess.check_call([opensslbin, "req", "-in", csrfile, "-noout", "-text"])
 
 def main(*args):
-    global sslca
-    sslca=SSLCA()
+    global minipki
+    minipki=MINIPKI()
     #logging.debug("main args: " + args)
     global opensslbin
     if (os.name == 'nt'):
@@ -346,27 +346,27 @@ def main(*args):
     subparser_makecnf.add_argument('servername', action='store', help='Supply a servername, such as myserver or myserver.sub.domain.tld. By default, this also specifies a hostname')
     subparser_makecnf.add_argument('--commonName', '-c', dest='commonname', action='store', help='Specify a hostname rather than use the servername to use in the config file.')
     subparser_makecnf.add_argument('--subjectAltName', '-a', dest='altnames',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
-    subparser_makecnf.set_defaults(func=sslca.makecnf)
+    subparser_makecnf.set_defaults(func=minipki.makecnf)
 
     subparser_examinecsr = subparsers.add_parser('examinecsr', help="Examine an existing CSR")
     subparser_examinecsr.add_argument('csrfile', action='store', help='Supply the path to a .csr file')
-    subparser_examinecsr.set_defaults(func=sslca.examinecsr)
+    subparser_examinecsr.set_defaults(func=minipki.examinecsr)
 
     subparser_genkey = subparsers.add_parser('genkey', help='Generate a private key & CSR for a server')
     subparser_genkey.add_argument('servername', action='store', help='Supply a servername, such as myserver or myserver.sub.domain.tld. The filenames for the cert, CSR, etc are based on this name. This subcommand also looks for an openssl configuration file named servername.openssl.cnf; if it does not find one, it will generate one for you.')
     subparser_genkey.add_argument('--commonName', '-c', dest='commonname', action='store', help='Specify a hostname rather than use the servername to use in the config file.')
     subparser_genkey.add_argument('--subjectAltName', '-a', dest='altnames',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
-    subparser_genkey.set_defaults(func=sslca.genprivkey)
+    subparser_genkey.set_defaults(func=minipki.genprivkey)
     
     subparser_sign = subparsers.add_parser('sign', help='Sign a CSR with an existing CA key')
     subparser_sign.add_argument('servername', nargs='+', action='store', help='Supply a servername, such as myserver or myserver.sub.domain.tld. The filenames for the cert, CSR, etc are based on this name.')
-    subparser_sign.set_defaults(func=sslca.signcerts)
+    subparser_sign.set_defaults(func=minipki.signcerts)
 
     subparser_gensign = subparsers.add_parser('gensign', help='Both generate and sign in one step')
     subparser_gensign.add_argument('servername', action='store', help='Supply a servername, such as myserver or myserver.sub.domain.tld. The filenames for the cert, CSR, etc are based on this name. This subcommand also looks for an openssl configuration file named servername.openssl.cnf; if it does not find one, it will generate one for you.')
     subparser_gensign.add_argument('--commonName', '-c', dest='commonname', action='store', help='Specify a hostname rather than use the servername to use in the config file.')
     subparser_gensign.add_argument('--subjectAltName', '-a', dest='altnames',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
-    subparser_gensign.set_defaults(func=sslca.gensign)
+    subparser_gensign.set_defaults(func=minipki.gensign)
 
     subparser_initca = subparsers.add_parser('initca', help='Initialize a Certificate Authority in this directory')
     subparser_initca.add_argument('--ca_commonName', '--commonName', dest='ca_commonName',action='store', required=True, help='REQUIRED. Provide a commonName for your new CA.')
@@ -376,7 +376,7 @@ def main(*args):
     subparser_initca.add_argument('--stateOrProvinceName', action='store', help='Provide a state or province name to be included on the CA certificate and any subsequent server certificates.')
     subparser_initca.add_argument('--localityName', action='store', help='Provide a locality name to be included on the CA certificate and any subsequent server certificates.')
     subparser_initca.add_argument('--purge', '-p', action='store_true', help='THIS OPTION WILL DELETE ALL FILES IN THE CURRENT DIRECTORY. It is really intended just for debugging.')
-    subparser_initca.set_defaults(func=sslca.initca)
+    subparser_initca.set_defaults(func=minipki.initca)
 
     parsed = argparser.parse_args()
     parsed.func(parsed)

@@ -1,4 +1,4 @@
-# sslca.py - Perform basic tasks for a mini-PKI
+# minipki - Certificate authority with no privilege separation
 
 This tool is a Python wrapper script for OpenSSL. I use it to keep track of the two tiny PKIs that I administer - one for home, and one for a client. 
 
@@ -8,7 +8,7 @@ It's intended for use by people who handle the whole infrastructure themselves. 
 
 - python3
   - On Unix: python3 in your path. 
-  - On Windows: you have to [set up .py scripts to be run by python](http://docs.python.org/using/windows.html#executing-scripts), wherever you've installed it to.
+  - On Windows: you have to [set up .py scripts to be run by python](http://docs.python.org/using/windows.html#executing-scripts), wherever you've installed it to. (This means you'll also need to rename `minipki` to `minipki.py`
 - openssl
   - On Unix: openssl in your path.
   - On Windows: you can just place openssl.exe in your path, but it also checks to see if you've installed [OpenVPN](http://openvpn.net/), or [GnuWin32's openssl pacakge](http://gnuwin32.sourceforge.net/packages/openssl.htm), or [msysgit](https://git.wiki.kernel.org/), and can use openssl.exe from those places.
@@ -21,7 +21,7 @@ It's intended for use by people who handle the whole infrastructure themselves. 
 
 First do this to generate your CA: 
 
-    sslca.py initca \
+    minipki initca \
         --ca_commonName "New mini-CA" \ 
         --organizationName "Your org"
         --emailAddress "you@example.com" \
@@ -52,17 +52,17 @@ If you already have a CA, you'll need to make sure the layout is the same as I e
 
 Once you have the CA, you can start generating server keys and certificates.
 
-    sslca.py gensign servername \
+    minipki gensign servername \
         --commonName "server.example.com" \
         --subjectAltName "*.wildcard.example.com,randomcname.example.com,server,10.10.10.10"
 
-Both `--commonName` and `--subjectAltName` are optional. The SAN list is a comma-separated list of alternative names. If the CN is not specified, sslca assumes that the servername you provide is the CN. 
+Both `--commonName` and `--subjectAltName` are optional. The SAN list is a comma-separated list of alternative names. If the CN is not specified, minipki assumes that the servername you provide is the CN. 
 
 The above command generates a new key, requests a CRL, and has the CA sign it, all in one step. You can instead accomplish this in pieces by doing the following
 
 1. Make the configuration file for the new server
 
-        sslca.py makecnf servername \
+        minipki makecnf servername \
             --commonName "server.example.com" \
             --subjectAltName "*.wildcard.example.com,randomcname.example.com,server,10.10.10.10"
 
@@ -70,17 +70,17 @@ The above command generates a new key, requests a CRL, and has the CA sign it, a
 
 3. Generate the private key for the new server:
 
-        sslca.py genkey servername 
+        minipki genkey servername 
 
 4. Sign the server certificate with the CA key
 
-        sslca.py sign servername
+        minipki sign servername
 
 You can even do the first three steps on the server itself, and submit the fourth step to be done by your CA, if you have separated infrastructure like that. 
 
 ### Other
 
-I've also included the utility subcommand `sslca.py examinecsr`, which just runs openssl against a CSR file and returns mostly human-readable text to you. This is mostly for my own convenience, since in the process of making sslca I kept having to remember how to invoke openssl directly. 
+I've also included the utility subcommand `minipki examinecsr`, which just runs openssl against a CSR file and returns mostly human-readable text to you. This is mostly for my own convenience, since in the process of making minipki I kept having to remember how to invoke openssl directly. 
 
 ### On subjectAltName
 

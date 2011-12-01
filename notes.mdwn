@@ -1,18 +1,18 @@
-# sslca.py devnotes
+# minipki devnotes
 
 This is where I keep information I'm likely to forget that's too long for comments in source code. 
 
 ## Server configuration
 
-The first iteration of sslca opened your editor directly on a servername.openssl.cnf file for each server you created. 
+The first iteration of minipki opened your editor directly on a servername.openssl.cnf file for each server you created. 
 
 This version just asks you what a server's main name is (probably it's FQDN), and creates the servername.openssl.cnf file automatically. 
 
 You can still get back the old behavior if you want: 
 
-    sslca.py buildconf servername
+    minipki buildconf servername
     $EDITOR servername.openssl.cnf
-    sslca.py gencrl servername
+    minipki gencrl servername
 
 ### Basic manual editing 
 
