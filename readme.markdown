@@ -8,7 +8,7 @@ It's intended for use by people who handle the whole infrastructure themselves. 
 
 - python3
   - On Unix: python3 in your path. 
-  - On Windows: you have to [set up .py scripts to be run by python](http://docs.python.org/using/windows.html#executing-scripts), wherever you've installed it to. (This means you'll also need to rename `minipki` to `minipki.py`
+  - On Windows: you have to [set up .py scripts to be run by python](http://docs.python.org/using/windows.html#executing-scripts), wherever you've installed it to. (This means you'll also need to rename `minipki` to `minipki.py`.)
 - openssl
   - On Unix: openssl in your path.
   - On Windows: you can just place openssl.exe in your path, but it also checks to see if you've installed [OpenVPN](http://openvpn.net/), or [GnuWin32's openssl pacakge](http://gnuwin32.sourceforge.net/packages/openssl.htm), or [msysgit](https://git.wiki.kernel.org/), and can use openssl.exe from those places.
@@ -107,6 +107,6 @@ I haven't ever had to revoke an OpenSSL key, so it doesn't do that yet.
 - After a while I just pulled everything into a shell script. 
 - 20111121: I wanted the script to run on Windows, so I ported it to Python and added some features. 
 - 20111128: Now it's in its own local git repo, with documentation, rather than in my homedir repo
-- 20111130: Now it's on GitHub
+- 20111130: Name change (sslca.py -> minipki), and I'm puttin it up GitHub \m/
 
 
