@@ -4,18 +4,12 @@
 - as part of this, I'm probably not modulizing this correctly / could be better. 
 - the IP address stuff needs to be fixed, or at least consistent. 
 - add an option to open the editor on the config file before continuing
-- put in an sslca configuration system... handle things like emailaddress etc which right now is hardcoded
-- also need to handle optional stuff like organization and location and stuff
-- add a cainit option that can initialize the ca from scratch including ca.openssl.cnf
-- when I do that, go through my ca.openssl.cnf file 
 - need to handle CRLs. 
 - explore dealing with an OpenVPN PKI as well
-- I have lots of line ending bullshit in there to make sure that notepad.exe can read the files properly. Make this better.
 
 ## Testing I want to do
 
 (If you happen to try these things, email me and let me know.)
 
-- I'm pretty sure that the commonName doesn't have to be first in the subjectAltName list, but I haven't tested it
 - I'm pretty sure it will work with a passworded CA key, but I haven't tested it (make sure this works on Windows too... console stuff is weird there)
 
