@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/Usr/bin/env python3
 # -*- mode: python -*-
 
 # minipki
@@ -39,7 +39,7 @@ class MINIPKI:
                 elif os.path.isdir(p):
                     shutil.rmtree(p)
         else: #not told to purge, so if one of these exists, exit before overwriting something important
-            for p in ["serial.txt", "index.txt", "private", "newcerts", "serverkeys", cacnf]:
+            for p in ["serial.txt", "index.txt", "private", "newcerts", "certified-keys", cacnf]:
                 if (os.path.exists(p)):
                     print("Path '" + p + "' exists, exiting...")
                     sys.exit(1)
@@ -55,7 +55,7 @@ class MINIPKI:
         open("index.txt","w").close() #create an empty file
         os.mkdir("private",700)
         os.mkdir("newcerts",700)
-        os.mkdir("serverkeys",700)
+        os.mkdir("certified-keys",700)
 
         subprocess.check_call([opensslbin, 
                                "req", #request a new key
@@ -68,118 +68,122 @@ class MINIPKI:
                                ])
 
     def genprivkey(self, args):
-        servername=args.servername
+        keyname=args.keyname
         logging.debug("genprivkey args: %r" % args)
-        subprocess.check_call([opensslbin, "genrsa", "-out", "serverkeys/"+servername+".key", str(keysize)])
-        servercnf="serverkeys/"+servername+".openssl.cnf"
-        if not (os.path.exists(servercnf)):
-            logging.debug("genprivkey: openssl configuration file not present, generating...")
-            MINIPKI.makecnf(self,args)
+        subprocess.check_call([opensslbin, "genrsa", "-out", "certified-keys/"+keyname+".key", str(keysize)])
+        if args.cnf: 
+            if not (os.path.exists(args.cnf)):
+                print("Server configuration file specified on command line as %r, but file does not exist. Exiting..." % args.cnf)
+                sys.exit(1)
+            servercnf=args.cnf
+        else:
+            servercnf="certified-keys/"+keyname+".openssl.cnf"
+            if not (os.path.exists(servercnf)):
+                logging.debug("genprivkey: openssl configuration file not present, generating...")
+                MINIPKI.makecnf(self,args)
         subprocess.check_call([opensslbin, 
                                "req", 
                                "-new", 
                                "-nodes",
                                "-config", servercnf, 
-                               "-key", "serverkeys/"+servername+".key", 
-                               "-out", "serverkeys/"+servername+".csr"])
+                               "-key", "certified-keys/"+keyname+".key", 
+                               "-out", "certified-keys/"+keyname+".csr"])
 
     def build_ca_cnf(self, args):
         # chunk1 is the stuff before the user settings
         # then come a few user-customizable things
         # then comes chunk2, the bulk of the file
 
-        chunk1 ="\n"
-        chunk1+="# openssl.cnf.ca\n"
-        chunk1+="# Via minipki\n"
-        chunk1+="\n"
-        chunk1+="HOME                    = .\n"
-        chunk1+="RANDFILE                = $ENV::HOME/.rnd\n"
-        chunk1+="\n"
-        chunk1+="[ root_ca_distinguished_name ]\n"
+        cacnf ="\n"
+        cacnf+="# openssl.cnf.ca\n"
+        cacnf+="# Via minipki\n"
+        cacnf+="\n"
+        cacnf+="HOME                    = .\n"
+        cacnf+="RANDFILE                = $ENV::HOME/.rnd\n"
+        cacnf+="\n"
+        cacnf+="[ root_ca_distinguished_name ]\n"
 
         # this is checked by argparse so we know it exists
-        userchunk = "commonName = " + args.ca_commonName + "\n"
+        cacnf+= "commonName = " + args.ca_commonName + "\n"
         if args.emailAddress:
-            userchunk += "emailAddress = " + args.emailAddress + "\n"
+            cacnf += "emailAddress = " + args.emailAddress + "\n"
         if args.countryName:
-            userchunk += "countryName = " + args.countryName + "\n"
+            cacnf += "countryName = " + args.countryName + "\n"
         if args.stateOrProvinceName:
-            userchunk += "stateOrProvinceName = " + args.stateOrProvinceName + "\n"
+            cacnf += "stateOrProvinceName = " + args.stateOrProvinceName + "\n"
         if args.localityName:
-            userchunk += "localityName = " + args.localityName + "\n"
+            cacnf += "localityName = " + args.localityName + "\n"
         if args.organizationName:
-            userchunk += "organizationName = " + args.organizationName + "\n"
+            cacnf += "organizationName = " + args.organizationName + "\n"
 
-        chunk2 ="\n"
-        chunk2+="[ ca ]\n"
-        chunk2+="default_ca      = CA_default\n"
-        chunk2+="\n"
-        chunk2+="[ CA_default ]\n"
-        chunk2+="dir             = .\n"
-        chunk2+="#certs           = $dir/certs\n"
-        chunk2+="new_certs_dir   = $dir/newcerts\n"
-        chunk2+="crl_dir         = $dir/crl\n"
-        chunk2+="database        = $dir/index.txt\n"
-        chunk2+="\n"
-        chunk2+="certificate     = $dir/ca.cert.pem\n"
-        chunk2+="serial          = $dir/serial.txt\n"
-        chunk2+="crl             = $dir/ca.crl.pem\n"
-        chunk2+="private_key     = $dir/private/ca.key.pem\n"
-        chunk2+="RANDFILE        = $dir/private/.rand\n"
-        chunk2+="x509_extensions = usr_cert\n"
-        chunk2+="copy_extensions	= copy\n"
-        chunk2+="unique_subject  = no\n"
-        chunk2+="name_opt        = ca_default\n"
-        chunk2+="cert_opt        = ca_default\n"
-        chunk2+="default_crl_days= 30\n"
-        chunk2+="default_days    = 365\n"
-        chunk2+="default_md      = sha1\n"
-        chunk2+="preserve        = no\n"
-        chunk2+="policy          = policy_ca\n"
-        chunk2+="\n"
-        chunk2+="[ policy_ca ]\n"
-        chunk2+="countryName             = optional\n"
-        chunk2+="stateOrProvinceName     = optional\n"
-        chunk2+="organizationName        = optional\n"
-        chunk2+="organizationalUnitName  = optional\n"
-        chunk2+="commonName              = supplied\n"
-        chunk2+="emailAddress            = optional\n"
-        chunk2+="\n"
-        chunk2+="[ policy_anything ]\n"
-        chunk2+="countryName             = optional\n"
-        chunk2+="stateOrProvinceName     = optional\n"
-        chunk2+="localityName            = optional\n"
-        chunk2+="organizationName        = optional\n"
-        chunk2+="organizationalUnitName  = optional\n"
-        chunk2+="commonName              = supplied\n"
-        chunk2+="emailAddress            = optional\n"
-        chunk2+="\n"
-        chunk2+="[ req ]\n"
-        chunk2+="default_bits            = 4096\n"
-        chunk2+="default_keyfile         = ./private/ca.key.pem\n"
-        chunk2+="default_md              = sha1\n"
-        chunk2+="prompt                  = no\n"
-        chunk2+="distinguished_name      = root_ca_distinguished_name\n"
-        chunk2+="x509_extensions         = v3_ca\n"
-        chunk2+="string_mask             = nombstr\n"
-        chunk2+="req_extensions          = v3_req\n"
-        chunk2+="\n"
-        chunk2+="[ usr_cert ]\n"
-        chunk2+="basicConstraints        = CA:FALSE\n"
-        chunk2+="subjectKeyIdentifier    = hash\n"
-        chunk2+="authorityKeyIdentifier  = keyid,issuer:always\n"
-        chunk2+="\n"
-        chunk2+="[ v3_req ]\n"
-        chunk2+="basicConstraints        = CA:FALSE\n"
-        chunk2+="keyUsage                = nonRepudiation, digitalSignature, keyEncipherment\n"
-        chunk2+="\n"
-        chunk2+="[ v3_ca ]\n"
-        chunk2+="subjectKeyIdentifier    = hash\n"
-        chunk2+="authorityKeyIdentifier  = keyid:always,issuer:always\n"
-        chunk2+="basicConstraints        = CA:true\n"
-
-        finalcnf = chunk1 + userchunk + chunk2
-        return finalcnf
+        cacnf+="\n"
+        cacnf+="[ ca ]\n"
+        cacnf+="default_ca      = CA_default\n"
+        cacnf+="\n"
+        cacnf+="[ CA_default ]\n"
+        cacnf+="dir             = .\n"
+        cacnf+="#certs           = $dir/certs\n"
+        cacnf+="new_certs_dir   = $dir/newcerts\n"
+        cacnf+="crl_dir         = $dir/crl\n"
+        cacnf+="database        = $dir/index.txt\n"
+        cacnf+="\n"
+        cacnf+="certificate     = $dir/ca.cert.pem\n"
+        cacnf+="serial          = $dir/serial.txt\n"
+        cacnf+="crl             = $dir/ca.crl.pem\n"
+        cacnf+="private_key     = $dir/private/ca.key.pem\n"
+        cacnf+="RANDFILE        = $dir/private/.rand\n"
+        cacnf+="x509_extensions = usr_cert\n"
+        cacnf+="copy_extensions	= copy\n"
+        cacnf+="unique_subject  = no\n"
+        cacnf+="name_opt        = ca_default\n"
+        cacnf+="cert_opt        = ca_default\n"
+        cacnf+="default_crl_days= 30\n"
+        cacnf+="default_days    = 365\n"
+        cacnf+="default_md      = sha1\n"
+        cacnf+="preserve        = no\n"
+        cacnf+="policy          = policy_ca\n"
+        cacnf+="\n"
+        cacnf+="[ policy_ca ]\n"
+        cacnf+="countryName             = optional\n"
+        cacnf+="stateOrProvinceName     = optional\n"
+        cacnf+="organizationName        = optional\n"
+        cacnf+="organizationalUnitName  = optional\n"
+        cacnf+="commonName              = supplied\n"
+        cacnf+="emailAddress            = optional\n"
+        cacnf+="\n"
+        cacnf+="[ policy_anything ]\n"
+        cacnf+="countryName             = optional\n"
+        cacnf+="stateOrProvinceName     = optional\n"
+        cacnf+="localityName            = optional\n"
+        cacnf+="organizationName        = optional\n"
+        cacnf+="organizationalUnitName  = optional\n"
+        cacnf+="commonName              = supplied\n"
+        cacnf+="emailAddress            = optional\n"
+        cacnf+="\n"
+        cacnf+="[ req ]\n"
+        cacnf+="default_bits            = 4096\n"
+        cacnf+="default_keyfile         = ./private/ca.key.pem\n"
+        cacnf+="default_md              = sha1\n"
+        cacnf+="prompt                  = no\n"
+        cacnf+="distinguished_name      = root_ca_distinguished_name\n"
+        cacnf+="x509_extensions         = v3_ca\n"
+        cacnf+="string_mask             = nombstr\n"
+        cacnf+="req_extensions          = v3_req\n"
+        cacnf+="\n"
+        cacnf+="[ usr_cert ]\n"
+        cacnf+="basicConstraints        = CA:FALSE\n"
+        cacnf+="subjectKeyIdentifier    = hash\n"
+        cacnf+="authorityKeyIdentifier  = keyid,issuer:always\n"
+        cacnf+="\n"
+        cacnf+="[ v3_req ]\n"
+        cacnf+="basicConstraints        = CA:FALSE\n"
+        cacnf+="keyUsage                = nonRepudiation, digitalSignature, keyEncipherment\n"
+        cacnf+="\n"
+        cacnf+="[ v3_ca ]\n"
+        cacnf+="subjectKeyIdentifier    = hash\n"
+        cacnf+="authorityKeyIdentifier  = keyid:always,issuer:always\n"
+        cacnf+="basicConstraints        = CA:true\n"
+        return cacnf
     
     def build_server_cnf(self, args):
         logging.debug("arguments: %r" % args)
@@ -210,10 +214,12 @@ class MINIPKI:
         chunk1+="localityName = .\n"
         chunk1+="organizationName = .\n"
 
-        if (args.commonname):
-            cn = args.commonname
-        else:
-            cn = args.servername
+        try:
+            cn = args.commonName
+        except AttributeError:
+            cn = args.keyname
+        except:
+            raise
         cnline= "commonName = " + cn + "\n"
         logging.debug("cn is %r" % cn)
 
@@ -226,6 +232,8 @@ class MINIPKI:
             if match != None:
                 emailline = match.string
                 break #to find only the first one
+        else:
+            emailline = "\n"
         fcacnf.close()
 
         chunk2= ""
@@ -234,12 +242,13 @@ class MINIPKI:
         chunk2+="basicConstraints = CA:FALSE\n"
         chunk2+="keyUsage = nonRepudiation, digitalSignature, keyEncipherment\n"
 
-        if (args.altnames):
+        try:
+            san = args.subjectAltName
             # we need a separate list of ip addresses vs DNS names
             sanchunk="subjectAltName = @alt_names" + "\n\n" + "[ alt_names ]" + "\n"
             ip=[] 
             dns=[]
-            for entry in args.altnames.split(","):
+            for entry in san.split(","):
                 # test if this is an IP address by asking the socket module
                 # NOTE: just because it's not a dotted quad doesn't mean it's not valid! 
                 # "4" is a valid IP address! 
@@ -278,36 +287,90 @@ class MINIPKI:
             for entry in ip:
                 sanchunk += "IP." + str(seq) + " = " + entry + '\n'
                 seq+=1
-        else:
+        except AttributeError: # there is no args.subjectAltName
             sanchunk="\n"
+        except:
+            raise
 
         servercnf = chunk1 + cnline + emailline + chunk2 + sanchunk
         #logging.debug(servercnf)
         #print(servercnf)
         return servercnf
 
-    def printcnf(self, args):
-        print(MINIPKI.build_server_cnf(args))
-
     def makecnf(self, args):
-        fcnf=open("serverkeys/"+args.servername+".openssl.cnf",'w')
+        fcnf=open("certified-keys/"+args.keyname+".openssl.cnf",'w')
         fcnf.write(MINIPKI.build_server_cnf(self,args))
         fcnf.close()
         
     def signcerts(self, args):
         logging.debug("signcerts args: %r" % args)
-        servername = args.servername
+        keyname = args.keyname
         subprocess.check_call([opensslbin, "ca", "-batch", "-config",
-                               "ca.openssl.cnf", "-in", "serverkeys/"+servername+".csr",
-                               "-out", "serverkeys/"+servername+".cert", "-days", "7300"])
+                               "ca.openssl.cnf", "-in", "certified-keys/"+keyname+".csr",
+                               "-out", "certified-keys/"+keyname+".cert", "-days", "7300"])
     
     def gensign(self, args):
         logging.debug("gensign args: %r" % args)
         MINIPKI.genprivkey(self,args)
         MINIPKI.signcerts(self,args)
 
+    def make_ovpn_zip(self, args):
+        import zipfile
+
+        # zip files list
+        zfl = {'cacrt':'ca.crt.pem', 
+               'dh':'dh1024.pem',
+               'crt':'certified-keys/'+args.keyname+'.cert',
+               'key':'certified-keys/'+args.keyname+'.key'}
+
+        for p in zfl:
+            if not (os.path.exists(zfl[p])):
+                print("Path '" + p + "' does not exist but is required, did you create the VPN CA and client private key and sign it? Exiting...")
+                sys.exit(1)
+
+        zfl['ovpn'] = 'certified-keys/'+args.vpnserver+'.ovpn'
+        fovpn=open(zfl['ovpn'],'w')
+        fovpn.write(MINIPKI.create_ovpn_config(self,args))
+        fovpn.close()
+
+        zovpn=zipfile.ZipFile('certified-keys/'+args.keyname+'.zip','w',zipfile.ZIP_STORED)
+        for p in zfl:
+            zovpn.write(zfl[p], #write this file
+                        os.path.basename(zfl[p])) #to the same filename minus leading directories
+        zovpn.close()
+
+    def vpngensign(self, args):
+        import zipfile
+        MINIPKI.gensign(self,args)
+        MINIPKI.make_ovpn_zip(self,args)
+
+    def create_ovpn_config(self,args):
+        ovpnfile =""
+        ovpnfile+="client" + "\r\n"
+        ovpnfile+="proto tcp-client" + "\r\n"
+        ovpnfile+="dev tap" + "\r\n"
+        ovpnfile+="dh dh1024.pem" + "\r\n"
+        ovpnfile+="ca ca.crt.pem" + "\r\n"
+        ovpnfile+='cert ' + args.keyname+'.cert' + '\r\n'
+        ovpnfile+='key ' + args.keyname+'.key' + '\r\n'
+        ovpnfile+='remote ' + args.vpnserver + ' ' + str(args.vpnport) + "\r\n"
+        ovpnfile+="cipher BF-CBC" + "\r\n"
+        ovpnfile+="verb 2" + "\r\n"
+        ovpnfile+="mute 20" + "\r\n"
+        ovpnfile+="keepalive 10 120" + "\r\n"
+        ovpnfile+="comp-lzo" + "\r\n"
+        ovpnfile+="persist-key" + "\r\n"
+        ovpnfile+="persist-tun" + "\r\n"
+        ovpnfile+="float" + "\r\n"
+        ovpnfile+="resolv-retry infinite" + "\r\n"
+        ovpnfile+="nobind" + "\r\n"
+        ovpnfile+="route-method exe" + "\r\n"
+        ovpnfile+="route-delay 2" + "\r\n"
+        ovpnfile+="route 192.168.55.0 255.255.255.0 192.168.59.1 3" + "\r\n"
+        return ovpnfile
+
     def examinecsr(self, args):
-        for p in [args.csrfile, args.csrfile+".csr", "serverkeys/"+args.csrfile, "serverkeys/"+args.csrfile+".csr"]:
+        for p in [args.csrfile, args.csrfile+".csr", "certified-keys/"+args.csrfile, "certified-keys/"+args.csrfile+".csr"]:
             if os.path.exists(p):
                 csrfile=p
                 break
@@ -353,9 +416,9 @@ def main(*args):
     subparsers = argparser.add_subparsers()
     
     subparser_makecnf = subparsers.add_parser('makecnf', help="Generate an openssl.cnf file for a server")
-    subparser_makecnf.add_argument('servername', action='store', help='Supply a servername, such as myserver or myserver.sub.domain.tld. By default, this also specifies a hostname')
-    subparser_makecnf.add_argument('--commonName', '-c', dest='commonname', action='store', help='Specify a hostname rather than use the servername to use in the config file.')
-    subparser_makecnf.add_argument('--subjectAltName', '-a', dest='altnames',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
+    subparser_makecnf.add_argument('keyname', type=str, action='store', help='Supply a keyname, such as myserver or myserver.sub.domain.tld. By default, this also specifies a hostname')
+    subparser_makecnf.add_argument('--commonName', action='store', help='Specify a hostname rather than use the keyname to use in the config file.')
+    subparser_makecnf.add_argument('--subjectAltName',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
     subparser_makecnf.set_defaults(func=minipki.makecnf)
 
     subparser_examinecsr = subparsers.add_parser('examinecsr', help="Examine an existing CSR")
@@ -363,19 +426,21 @@ def main(*args):
     subparser_examinecsr.set_defaults(func=minipki.examinecsr)
 
     subparser_genkey = subparsers.add_parser('genkey', help='Generate a private key & CSR for a server')
-    subparser_genkey.add_argument('servername', action='store', help='Supply a servername, such as myserver or myserver.sub.domain.tld. The filenames for the cert, CSR, etc are based on this name. This subcommand also looks for an openssl configuration file named servername.openssl.cnf; if it does not find one, it will generate one for you.')
-    subparser_genkey.add_argument('--commonName', '-c', dest='commonname', action='store', help='Specify a hostname rather than use the servername to use in the config file.')
-    subparser_genkey.add_argument('--subjectAltName', '-a', dest='altnames',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
+    subparser_genkey.add_argument('keyname', type=str, action='store', help='Supply a keyname, such as myserver or myserver.sub.domain.tld. The filenames for the cert, CSR, etc are based on this name. This subcommand also looks for an openssl configuration file named keyname.openssl.cnf; if it does not find one, it will generate one for you.')
+    subparser_genkey.add_argument('--commonName', action='store', help='Specify a hostname rather than use the keyname to use in the config file.')
+    subparser_genkey.add_argument('--subjectAltName',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
+    subparser_genkey.add_argument('--cnf', action='store', help='An existing openssl.cnf file. Useful if all of your server certs can use the same file because the commonName is optional (as is the case with my OpenVPN setup).')
     subparser_genkey.set_defaults(func=minipki.genprivkey)
     
     subparser_sign = subparsers.add_parser('sign', help='Sign a CSR with an existing CA key')
-    subparser_sign.add_argument('servername', nargs='+', action='store', help='Supply a servername, such as myserver or myserver.sub.domain.tld. The filenames for the cert, CSR, etc are based on this name.')
+    subparser_sign.add_argument('keyname', type=str, action='store', help='Supply a keyname, such as myserver or myserver.sub.domain.tld. The filenames for the cert, CSR, etc are based on this name.')
     subparser_sign.set_defaults(func=minipki.signcerts)
 
     subparser_gensign = subparsers.add_parser('gensign', help='Both generate and sign in one step')
-    subparser_gensign.add_argument('servername', action='store', help='Supply a servername, such as myserver or myserver.sub.domain.tld. The filenames for the cert, CSR, etc are based on this name. This subcommand also looks for an openssl configuration file named servername.openssl.cnf; if it does not find one, it will generate one for you.')
-    subparser_gensign.add_argument('--commonName', '-c', dest='commonname', action='store', help='Specify a hostname rather than use the servername to use in the config file.')
-    subparser_gensign.add_argument('--subjectAltName', '-a', dest='altnames',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
+    subparser_gensign.add_argument('keyname', type=str, action='store', help='Supply a keyname, such as myserver or myserver.sub.domain.tld. The filenames for the cert, CSR, etc are based on this name. This subcommand also looks for an openssl configuration file named keyname.openssl.cnf; if it does not find one, it will generate one for you.')
+    subparser_gensign.add_argument('--commonName', action='store', help='Specify a hostname rather than use the keyname to use in the config file.')
+    subparser_gensign.add_argument('--subjectAltName',   action='store', help='A list of subjectAltName entries, separated by commas, such as myserver,myserver.domain.tld,10.10.10.10 .')
+    subparser_gensign.add_argument('--cnf', action='store', help='An existing openssl.cnf file. Useful if all of your server certs can use the same file because the commonName is optional (as is the case with my OpenVPN setup).')
     subparser_gensign.set_defaults(func=minipki.gensign)
 
     subparser_initca = subparsers.add_parser('initca', help='Initialize a Certificate Authority in this directory')
@@ -385,8 +450,21 @@ def main(*args):
     subparser_initca.add_argument('--countryName', action='store', help='Provide a country name to be included on the CA certificate and any subsequent server certificates.')
     subparser_initca.add_argument('--stateOrProvinceName', action='store', help='Provide a state or province name to be included on the CA certificate and any subsequent server certificates.')
     subparser_initca.add_argument('--localityName', action='store', help='Provide a locality name to be included on the CA certificate and any subsequent server certificates.')
-    subparser_initca.add_argument('--purge', '-p', action='store_true', help='THIS OPTION WILL DELETE ALL FILES IN THE CURRENT DIRECTORY. It is really intended just for debugging.')
+    subparser_initca.add_argument('--purge', action='store_true', help='THIS OPTION WILL DELETE ALL FILES IN THE CURRENT DIRECTORY. It is really intended just for debugging.')
     subparser_initca.set_defaults(func=minipki.initca)
+
+    subparser_vpnconfig = subparsers.add_parser('vpnconfig', help='Create a vpn configuration from an existing signed private key, and zip them all up.')
+    subparser_vpnconfig.add_argument('keyname', type=str, action='store', help='Supply a keyname, such as jsmith. The filenames for the cert, CSR, etc are based on this name.')
+    subparser_vpnconfig.add_argument('--vpnserver', action='store', required=True, help='Supply a hostname for the VPN server. Required.')
+    subparser_vpnconfig.add_argument('--vpnport', action='store', type=int, default=1194, help='Supply a port for the VPN server. Default is 1194.')
+    subparser_vpnconfig.set_defaults(func=minipki.make_ovpn_zip)
+
+    subparser_vpngensign = subparsers.add_parser('vpngensign', help='Generate a VPN private key, sign it, create a VPN configuration from it, and zip them all up.')
+    subparser_vpngensign.add_argument('keyname', type=str, action='store', help='Supply a keyname, such as jsmith. The filenames for the cert, CSR, etc are based on this name.')
+    subparser_vpngensign.add_argument('--vpnserver', action='store', required=True, help='Supply a hostname for the VPN server. Required.')
+    subparser_vpngensign.add_argument('--vpnport', action='store', type=int, default=1194, help='Supply a port for the VPN server. Default is 1194.')
+    subparser_vpngensign.add_argument('--cnf', action='store', help='An existing openssl.cnf file. Useful if all of your certs can use the same file because the commonName is optional (as is the case with my OpenVPN setup).')
+    subparser_vpngensign.set_defaults(func=minipki.vpngensign)
 
     parsed = argparser.parse_args()
     parsed.func(parsed)
