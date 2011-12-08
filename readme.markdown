@@ -41,7 +41,7 @@ If you already have a CA, you'll need to make sure the layout is the same as I e
     - private/
     - ca.key.pem
     - serverkeys/
-        - this can be empty; it's where the new keys, certs, cnf files, and crls for servers will be saved
+        - this can be empty; it's where the new keys, certs, cnf files, and csrs for servers will be saved
     - ca.crt.pem
     - ca.openssl.cnf
         - you'll need to make sure that this hierarchy is also reflected in your ca.openssl.cnf file! 
@@ -58,7 +58,7 @@ Once you have the CA, you can start generating server keys and certificates.
 
 Both `--commonName` and `--subjectAltName` are optional. The SAN list is a comma-separated list of alternative names. If the CN is not specified, minipki assumes that the servername you provide is the CN. 
 
-The above command generates a new key, requests a CRL, and has the CA sign it, all in one step. You can instead accomplish this in pieces by doing the following
+The above command generates a new key and a CSR, and has the CA sign it, all in one step. You can instead accomplish this in pieces by doing the following
 
 1. Make the configuration file for the new server
 
@@ -98,9 +98,9 @@ I use [OpenVPN](http://openvpn.net/index.php/open-source/downloads.html) for sev
 
 Much of the functionality is the same - you can use `minipki [genkey|gensign|buildcnf]` exactly as before. However, I added another step in the process - `minipki vpnconfig` will create an OpenVPN configuration file for an existing private client key, and `minipki vpngensign` will generate a private key, sign it, and build an OpenVPN config file all in one step. Both of these subcommands also zip up all the client configuration files - that is, `dh1025.pem`, `ca.crt.pem`, `clientname.key`, `clientname.cert`, and `vpnname.ovpn` - for easy deployment. 
 
-(Note that this is a bit less polished than the CA use case. For example, it lacks an `openvpninit` subcommand which would generate `dh1024.pem` for you. This should be fixed.)
+(Note that this is a bit less polished than the CA use case. For example, it lacks a `vpninit` subcommand which would generate `dh1024.pem` for you. This should be fixed.)
 
-I've also added some extra options for VPN use. When generating CRLs, you can use `--cnf` to specify a cnf file rather than have `minipki` build one for you or find one named like `keyname.openssl.cnf`. I use this because I have the same openssl.cnf file for all my OpenVPN client keys to make things simpler (and rather than using commonName or emailAddress fields to determine who a given key belongs to, I just use the filename). 
+I've also added some extra options for VPN use. When generating CSRs, you can use `--cnf` to specify a cnf file rather than have `minipki` build one for you or find one named like `keyname.openssl.cnf`. I use this because I have the same openssl.cnf file for all my OpenVPN client keys to make things simpler (and rather than using commonName or emailAddress fields to determine who a given key belongs to, I just use the filename). 
 
 ## Security
 
