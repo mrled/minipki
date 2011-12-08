@@ -92,6 +92,16 @@ As you can see, the altnames stuff is optional, but I run into it a lot (and it 
 - if sometimes you want to use its FQDN (like <https://beerbread.example.com>) and sometimes just by its hostname (like <https://beerbread>)
 - if you want to use the same cert to secure services both inside and outside of a NAT (e.g. if your internal hostname is beerbread.is.the.greatest but your external hostname is beerbread.dyndns.com)
 
+### OpenVPN use
+
+I use [OpenVPN](http://openvpn.net/index.php/open-source/downloads.html) for several clients as well (it's part of the excellent [pfSense](http://www.pfsense.org/), which I like a lot), and I added some functionality for dealing with OpenVPN certificate authorities as well. 
+
+Much of the functionality is the same - you can use `minipki [genkey|gensign|buildcnf]` exactly as before. However, I added another step in the process - `minipki vpnconfig` will create an OpenVPN configuration file for an existing private client key, and `minipki vpngensign` will generate a private key, sign it, and build an OpenVPN config file all in one step. Both of these subcommands also zip up all the client configuration files - that is, `dh1025.pem`, `ca.crt.pem`, `clientname.key`, `clientname.cert`, and `vpnname.ovpn` - for easy deployment. 
+
+(Note that this is a bit less polished than the CA use case. For example, it lacks an `openvpninit` subcommand which would generate `dh1024.pem` for you. This should be fixed.)
+
+I've also added some extra options for VPN use. When generating CRLs, you can use `--cnf` to specify a cnf file rather than have `minipki` build one for you or find one named like `keyname.openssl.cnf`. I use this because I have the same openssl.cnf file for all my OpenVPN client keys to make things simpler (and rather than using commonName or emailAddress fields to determine who a given key belongs to, I just use the filename). 
+
 ## Security
 
 This tool was designed for PKIs for which privilege separation between server and CA make no sense, because both are handled by a single administrator. Its original intent was just to automate key generation, CSR requesting, and CSR signing. This means it can generate your private key and sign it all in one place if you wish. 
