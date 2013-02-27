@@ -7,11 +7,14 @@ It's intended for use by people who handle the whole infrastructure themselves. 
 ## Requirements
 
 - python3
-  - On Unix: python3 in your path. 
-  - On Windows: you have to [set up .py scripts to be run by python](http://docs.python.org/using/windows.html#executing-scripts), wherever you've installed it to. (This means you'll also need to rename `minipki` to `minipki.py`.)
+    - On Unix: python3 in your path. 
+    - On Windows: 
+        - Python3 installed somewhere
+        - The provided `minipki.bat` file. Edit it to contain the paths to python3 and minipki, and 
+          then copy it anywhere you like (I recommend somewhere in your `%PATH%`).
 - openssl
-  - On Unix: openssl in your path.
-  - On Windows: you can just place openssl.exe in your path, but it also checks to see if you've installed [OpenVPN](http://openvpn.net/), or [GnuWin32's openssl pacakge](http://gnuwin32.sourceforge.net/packages/openssl.htm), or [msysgit](https://git.wiki.kernel.org/), and can use openssl.exe from those places.
+  - On Unix: openssl in your `$PATH`.
+  - On Windows: either openssl.exe in your `%PATH%`, or one with oen of the following packages installed: [OpenVPN](http://openvpn.net/), [GnuWin32's openssl pacakge](http://gnuwin32.sourceforge.net/packages/openssl.htm), or [msysgit](https://git.wiki.kernel.org/).
 
 ## How to use
 

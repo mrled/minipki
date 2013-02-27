@@ -30,3 +30,10 @@ You can still get back the old behavior if you want:
         DNS.5 = *.example2.tld
         IP.1 = 10.0.0.1
 
+## check_call vs Popen
+
+`subprocess.check_call()` is simpler. `subprocess.Popen()` lets me specify environment variables. 
+
+If I set the `OPENSSL_CONF` environment variable to a real openssl configuration file, it will shut the hell up about not being able to find the default one which is set at *compile time* (wtf). I've never had a `z:/strawberry_libs/build/_wrk_libs2011__.out/ssl/openssl.cnf` file on my system but please warn me about that every time I do anything!
+
+Note that this is not the same as the `--conf` argument. Even for invocations of `openssl` which accept `--conf`, they'll still spit an error if it can't find the compiled-in configuration when the program starts. WTF.
