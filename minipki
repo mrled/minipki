@@ -7,9 +7,16 @@
 # - http://sial.org/howto/openssl/ca/
 # - http://www.openssl.org/docs/apps/ca.html
 
-import sys, os, shutil, argparse, logging, subprocess, socket, re
+import sys
+import os
+import shutil
+import argparse
+import logging
+import subprocess
+import socket
+import re
 
-#logging.basicConfig(level=logging.DEBUG) #show all messages up to and including logging.debug() messages
+MINIPKI_DEBUG = False
 
 #keysize=512 #this is for testing purposes only - weak keys, but fast generation
 keysize=4096 #I prefer large keys like this. You might instead prefer 1024 or 2048.
@@ -20,8 +27,28 @@ SERVER_VALID_DAYS = 7300
 
 CA_CNF = "ca.openssl.cnf"
 
+makensisexe=os.path.normpath(r"C:\Program Files (x86)\NSIS\makensis.exe")
+
+#
+#
+# You should never have to change anything below this line
+#
+#
+
+scriptdir = os.path.dirname(os.path.realpath(__file__))
+
+ovpn_nsi_path   = os.path.abspath(os.getenv("TEMP") + '/openvpn-config.nsi')
+ca_nsi_path     = os.path.abspath(os.getenv("TEMP") + '/ca.nsi')
+castub_nsi_path = os.path.abspath(os.getenv("TEMP") + '/castub.nsi')
+
+if MINIPKI_DEBUG: 
+    logging.basicConfig(level=logging.DEBUG) #show all messages up to and including logging.debug() messages
+
 def is_exe(fpath):
     return os.path.exists(fpath) and os.access(fpath, os.X_OK)
+
+def is_existing_file(fpath):
+    return os.path.exists(fpath)
 
 def which(program):
     fpath, fname = os.path.split(program)
@@ -69,7 +96,7 @@ class MINIPKI:
         #                        "-nodes",  #"No DES", i.e. don't create an encrypted key
         #                        "-x509", #puts out a self-signed cert instead of a csr; required for a CA
         #                        "-days", str(CA_VALID_DAYS),
-        #                        "-out", "ca.cert.pem", #will output to stdout otherwise, which we don't want
+        #                        "-out", "ca.crt.pem", #will output to stdout otherwise, which we don't want
         #                        "-newkey", "rsa:"+str(keysize), #create an RSA key, store it where cnf says
         #                        ])
         proc = subprocess.Popen([opensslbin, 
@@ -78,7 +105,7 @@ class MINIPKI:
                                  "-nodes",  #don't create an encrypted key (& don't prompt for enc password)
                                  "-x509", #puts out a self-signed cert instead of a csr; required for a CA
                                  "-days", str(CA_VALID_DAYS),
-                                 "-out", "ca.cert.pem", #will output to stdout otherwise, which we don't want
+                                 "-out", "ca.crt.pem", #will output to stdout otherwise, which we don't want
                                  "-newkey", "rsa:"+str(keysize)], #create an RSA key store it where cnf says
                                 env={"OPENSSL_CONF": CA_CNF})
         proc.wait()
@@ -151,7 +178,7 @@ class MINIPKI:
         cacnf+="crl_dir         = $dir/crl\n"
         cacnf+="database        = $dir/index.txt\n"
         cacnf+="\n"
-        cacnf+="certificate     = $dir/ca.cert.pem\n"
+        cacnf+="certificate     = $dir/ca.crt.pem\n"
         cacnf+="serial          = $dir/serial.txt\n"
         cacnf+="crl             = $dir/ca.crl.pem\n"
         cacnf+="private_key     = $dir/private/ca.key.pem\n"
@@ -238,9 +265,12 @@ class MINIPKI:
         chunk1+="localityName = .\n"
         chunk1+="organizationName = .\n"
 
-        if type(args.commonName) is str: 
-            cn = args.commonName
-        else:
+        try:
+            if args.commonName is str:
+                cn = str(args.commonName)
+            else:
+                raise Exception("Should never be here lol")
+        except:
             cn = args.keyname
         cnline= "commonName = " + cn + "\n"
         logging.debug("cn is %r" % cn)
@@ -275,7 +305,7 @@ class MINIPKI:
                 # NOTE: just because it's not a dotted quad doesn't mean it's not valid! 
                 # "4" is a valid IP address! 
                 # this is not ideal b/c openssl doesn't accept IPs that are not dotted quads. <sigh>
-                # NOTE2: currently this doesn't match ipv6 addresses
+                # TODO: currently this doesn't match ipv6 addresses
                 # see also <http://stackoverflow.com/questions/319279/how-to-validate-ip-address-in-python>
                 try:
                     socket.inet_aton(entry)
@@ -284,7 +314,8 @@ class MINIPKI:
                     # assume it's a hostname if it fails the socket test
                     dns.append(entry)
 
-            # The commonName MUST also be in the subjectAltName list; if it isn't specified there by the user, add it
+            # The commonName MUST also be in the subjectAltName list; 
+            # if it isn't specified there by the user, add it
             try: 
                 socket.inet_aton(cn)
                 # looks like cn is an IP address. check for it in the ip list
@@ -358,12 +389,13 @@ class MINIPKI:
 
         for p in zfl:
             if not (os.path.exists(zfl[p])):
-                print("Path '" + p + "' does not exist but is required, did you create the VPN CA and client private key and sign it? Exiting...")
+                print("Path '{}' does not exist but is required, did you create".format(p), 
+                      "the VPN CA and client private key and sign it? Exiting...")
                 sys.exit(1)
 
         zfl['ovpn'] = 'certified-keys/'+args.vpnserver+'.ovpn'
         fovpn=open(zfl['ovpn'],'w')
-        fovpn.write(MINIPKI.create_ovpn_config(self,args))
+        fovpn.write(MINIPKI.build_ovpn_config(self,args))
         fovpn.close()
 
         zovpn=zipfile.ZipFile('certified-keys/'+args.keyname+'.zip','w',zipfile.ZIP_STORED)
@@ -372,15 +404,24 @@ class MINIPKI:
                         os.path.basename(zfl[p])) #to the same filename minus leading directories
         zovpn.close()
 
+        if args.installer or args.also_cacert:
+            MINIPKI.create_ovpn_nsis_installer(self, args)
+
     def vpngensign(self, args):
         import zipfile
         MINIPKI.gensign(self,args)
         MINIPKI.make_ovpn_zip(self,args)
 
-    def create_ovpn_config(self,args):
+    # TODO: standardize "build_..." vs "create_..." verbage in function names
+    # TODO: standardize self.func(args) vs MINIPKI.func(self, args)
+    # TODO: do I need to pass around args all the time? can I save those to the object and then
+    #       just look them up directly? 
+
+    def build_ovpn_config(self,args):
         ovpnfile =""
         ovpnfile+="client" + "\r\n"
-        ovpnfile+="proto tcp-client" + "\r\n"
+        #ovpnfile+="proto tcp-client" + "\r\n"
+        ovpnfile+="proto udp" + "\r\n"
         ovpnfile+="dev tap" + "\r\n"
         ovpnfile+="dh dh1024.pem" + "\r\n"
         ovpnfile+="ca ca.crt.pem" + "\r\n"
@@ -402,6 +443,224 @@ class MINIPKI:
         ovpnfile+="route 192.168.55.0 255.255.255.0 192.168.59.1 3" + "\r\n"
         return ovpnfile
 
+    def build_ca_nsi(self, args):
+        """Build the CA part of an NSI file which makensis can use.
+        The file will *not* stand on its own; it's meant to be able to be incorporated in a larger
+        NSIS installer. If you want to create an installer for just the CA, use build_ca_nsi() along
+        with build_castub_nsi().
+        """
+        canhnsi=''
+        canhnsi+='!include "'+scriptdir+'\contrib\certificate.nsh"' +'\r\n'
+        canhnsi+='!include LogicLib.nsh' +'\r\n'
+        canhnsi+='' +'\r\n'
+        canhnsi+='!ifndef CONFIG_CACRT' +'\r\n'
+        canhnsi+='    !echo "You did not pass a /DCONFIG_CACRT=C:\path\to\ca.crt argument to makensis.exe!"' +'\r\n'
+        canhnsi+='    !echo "We are assuming there is a file ca.crt in the CWD."' +'\r\n'
+        canhnsi+='    !define CONFIG_CACRT "ca.crt"' +'\r\n'
+        canhnsi+='!endif' +'\r\n'
+        canhnsi+='' +'\r\n'
+        canhnsi+='Section "Install '+args.organization+' Certificate Authority"' +'\r\n'
+        canhnsi+='    File "/oname=$TEMP\ca.crt" "${CONFIG_CACRT}"' +'\r\n'
+        canhnsi+='' +'\r\n'
+        canhnsi+='    ; Internet Explorer' +'\r\n'
+        canhnsi+='    Push "$TEMP\ca.crt"' +'\r\n'
+        canhnsi+='    Call AddCertificateToStore' +'\r\n'
+        canhnsi+='    Pop $0' +'\r\n'
+        canhnsi+='    ${If} $0 != success' +'\r\n'
+        canhnsi+='        MessageBox MB_OK "import failed: $0"' +'\r\n'
+        canhnsi+='    ${EndIf}' +'\r\n'
+        canhnsi+='' +'\r\n'
+        canhnsi+='    ; Firefox' +'\r\n'
+        canhnsi+='    ReadINIStr $1 "$APPDATA\Mozilla\Firefox\profiles.ini" "Profile0" "Path"' +'\r\n'
+
+        # weird NSIS idiom: if there's an error, jump 0 lines; else jump +2 lines
+        canhnsi+='        IfErrors 0 +2' +'\r\n' # if errors, jump 0 lines; else jump +2 lines
+        # if there was an error, we arrive here, which jumps us to the end b/c Firefox isn't installed
+        # (or hasn't been run on this account)
+        canhnsi+='        goto end' +'\r\n'
+
+        canhnsi+='    !insertmacro AddFirefoxCertificate $TEMP\ca.crt $APPDATA\Mozilla\Firefox\$1' +'\r\n'
+        canhnsi+='    ' +'\r\n'
+        canhnsi+='    end: ' +'\r\n'
+        canhnsi+='SectionEnd' +'\r\n'
+        canhnsi+='' +'\r\n'
+        return canhnsi
+
+    def build_castub_nsi(self, args):
+        """Generate an NSI file for just installing a CA to a user's trusted root store. 
+        (Must be combined with the output of build_ca_nsi().)
+        """
+        cansi=''
+        cansi+='!ifndef OUTPUT_EXE'+'\r\n'
+        cansi+='    !define OUTPUT_EXE "'+args.organization+'-CA.exe"'+'\r\n'
+        cansi+='!endif'+'\r\n'
+        cansi+='Name "'+args.organization+' certificate authority installer"'+'\r\n'
+        cansi+='Outfile "${OUTPUT_EXE}"'+'\r\n'
+        cansi+='RequestExecutionLevel admin'+'\r\n'
+        cansi+='ShowInstDetails nevershow'+'\r\n'
+        return cansi
+
+    def build_ovpn_nsi(self, args):
+        """Generate an NSI file for installing an OpenVPN configuration. Can be combined with
+        the output of build_ca_nsi() for a single installer exe which will install bother OpenVPN
+        configuration and a certificate authority.
+        """
+        ovpnnsi=r''
+        ovpnnsi+=r'!include LogicLib.nsh'+'\r\n'
+        ovpnnsi+=r'!include x64.nsh'+'\r\n'
+        ovpnnsi+=r'!include "NSISpcre.nsh"'+'\r\n'
+        ovpnnsi+=r''+'\r\n'
+        ovpnnsi+=r'!ifndef CONFIG_ZIP'+'\r\n'
+        ovpnnsi+=r'    !echo "You did not pass a /DCONFIG_ZIP=C:\path\to\asdf.zip argument to makensis.exe!"'+'\r\n'
+        ovpnnsi+=r'    !echo "We are assuming there is a file '+args.organization+'-vpn-config.zip in the CWD."'+'\r\n'
+        ovpnnsi+=r'    !define CONFIG_ZIP "'+args.organization+'-vpn-config.zip"'+'\r\n'
+        ovpnnsi+=r'!endif'+'\r\n'
+        ovpnnsi+=r''+'\r\n'
+        ovpnnsi+=r'!ifndef OUTPUT_EXE'+'\r\n'
+        ovpnnsi+=r'    !define OUTPUT_EXE "'+args.organization+'-OpenVPN-config.exe"'+'\r\n'
+        ovpnnsi+=r'!endif'+'\r\n'
+        ovpnnsi+=r''+'\r\n'
+        ovpnnsi+=r'Var /global OVPN_CONF_DIR'+'\r\n'
+        ovpnnsi+=r'Var /global OVPNGUI_PATH'+'\r\n'
+        ovpnnsi+=r'Var /global OVPN_DIR'+'\r\n'
+        ovpnnsi+=r'Var /global UNINSTALLER_PATH'+'\r\n'
+        ovpnnsi+=r'Var /global UNINSTALLER_KEY'+'\r\n'
+        ovpnnsi+=r''+'\r\n'
+        ovpnnsi+=r'!macro GetOvpnDir'+'\r\n'
+        ovpnnsi+=r'    ;StrCpy $OVPN_DIR "C:\Program Files\OpenVPN"'+'\r\n'
+        ovpnnsi+=r'    ;StrCpy $OVPN_CONF_DIR "$OVPN_DIR\config"'+'\r\n'
+        ovpnnsi+=r''+'\r\n'
+        ovpnnsi+=r'    ; If you do not do this, you will not see the 64 bit reg keys AGH.'+'\r\n'
+        ovpnnsi+=r'    ${If} ${RunningX64}'+'\r\n'
+        ovpnnsi+=r'        SetRegView 64'+'\r\n'
+        ovpnnsi+=r'    ${EndIf}'+'\r\n'
+        ovpnnsi+=r'    ClearErrors'+'\r\n'
+        ovpnnsi+=r'    ReadRegStr $OVPN_DIR HKLM "SOFTWARE\OpenVPN" ""'+'\r\n'
+        ovpnnsi+=r'    IfErrors 0 +3 ; iferrors, skip 0 lines, else, skip the next 2 lines (+3 means skip 2, cool right)'+'\r\n'
+        ovpnnsi+=r'        MessageBox MB_OK "Cannot find OpenVPN installed. You must install OpenVPN first! Exiting..."'+'\r\n'
+        ovpnnsi+=r'        Quit'+'\r\n'
+        ovpnnsi+=r'    ReadRegStr $OVPN_CONF_DIR HKLM "SOFTWARE\OpenVPN" "config_dir"'+'\r\n'
+        ovpnnsi+=r'    StrCpy $OVPNGUI_PATH "$OVPN_DIR\bin\openvpn-gui.exe"'+'\r\n'
+        ovpnnsi+=r'    StrCpy $UNINSTALLER_PATH "$OVPN_CONF_DIR\uninstall-'+args.organization+'-vpn-config.exe"'+'\r\n'
+        ovpnnsi+=r'    StrCpy $UNINSTALLER_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\OpenVPN-'+args.organization+'-Config"'+'\r\n'
+        ovpnnsi+=r'!macroend'+'\r\n'
+        ovpnnsi+=r''+'\r\n'
+        ovpnnsi+=r'Name "'+args.organization+' OpenVPN configuration installer"'+'\r\n'
+        ovpnnsi+=r'Outfile "${OUTPUT_EXE}"'+'\r\n'
+        ovpnnsi+=r'RequestExecutionLevel admin'+'\r\n'
+        ovpnnsi+=r'ShowInstDetails show'+'\r\n'
+        ovpnnsi+=r''+'\r\n'
+        ovpnnsi+=r'Page components'+'\r\n'
+        ovpnnsi+=r'Page instfiles'+'\r\n'
+        ovpnnsi+=r''+'\r\n'
+        ovpnnsi+=r'UninstPage instfiles'+'\r\n'
+        ovpnnsi+=r''+'\r\n'
+        ovpnnsi+=r'Section "'+args.organization+' OpenVPN user configuration"'+'\r\n'
+        ovpnnsi+=r''+'\r\n'
+        ovpnnsi+=r'    SetDetailsView show'+'\r\n'
+        ovpnnsi+=r'    !insertmacro GetOvpnDir'+'\r\n'
+        ovpnnsi+=r''+'\r\n'
+        ovpnnsi+=r'    Setoutpath "$OVPN_CONF_DIR"'+'\r\n'
+        ovpnnsi+=r'    File "/oname='+args.organization+'-vpn-config.zip" "${CONFIG_ZIP}"'+'\r\n'
+        ovpnnsi+=r'    nsUnzip::Extract /u "$OVPN_CONF_DIR\\'+args.organization+'-vpn-config.zip" /d="$OVPN_CONF_DIR" /END'+'\r\n'
+        ovpnnsi+=r''+'\r\n'
+        ovpnnsi+=r'    ; create uninstall info'+'\r\n'
+        ovpnnsi+=r'    WriteRegStr   HKLM $UNINSTALLER_KEY "DisplayName" "OpenVPN - '+args.organization+' Configuration"'+'\r\n'
+        ovpnnsi+=r'    WriteRegStr   HKLM $UNINSTALLER_KEY "UninstallString" "$UNINSTALLER_PATH"'+'\r\n'
+        ovpnnsi+=r'    WriteRegStr   HKLM $UNINSTALLER_KEY "Publisher" "'+args.organization+'"'+'\r\n'
+        ovpnnsi+=r'    WriteRegStr   HKLM $UNINSTALLER_KEY "NoModify" 0x1'+'\r\n'
+        ovpnnsi+=r'    WriteRegDWORD HKLM $UNINSTALLER_KEY "NoRepair" 0x1'+'\r\n'
+        ovpnnsi+=r'    WriteUninstaller "$UNINSTALLER_PATH"'+'\r\n'
+        ovpnnsi+=r'SectionEnd'+'\r\n'
+        ovpnnsi+=r''+'\r\n'
+        ovpnnsi+=r'Section "Force OpenVPN to run as admin"'+'\r\n'
+        ovpnnsi+=r'    SetDetailsView show'+'\r\n'
+        ovpnnsi+=r'    !insertmacro GetOvpnDir'+'\r\n'
+        ovpnnsi+=r'    WriteRegStr HKLM "SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$OVPNGUI_PATH" "RUNASADMIN"'+'\r\n'
+        ovpnnsi+=r'    WriteRegStr HKCU "SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$OVPNGUI_PATH" "RUNASADMIN"'+'\r\n'
+        ovpnnsi+=r'SectionEnd'+'\r\n'
+        ovpnnsi+=r''+'\r\n'
+        ovpnnsi+=r'Section "Uninstall"'+'\r\n'
+        ovpnnsi+=r'    SetDetailsView show'+'\r\n'
+        ovpnnsi+=r'    !insertmacro GetOvpnDir'+'\r\n'
+        ovpnnsi+=r'    DeleteRegValue HKLM "SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$OVPNGUI_PATH"'+'\r\n'
+        ovpnnsi+=r'    DeleteRegValue HKCU "SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$OVPNGUI_PATH"'+'\r\n'
+        ovpnnsi+=r'    DeleteRegKey HKLM $UNINSTALLER_KEY'+'\r\n'
+        ovpnnsi+=r'    Delete /REBOOTOK "$OVPN_CONF_DIR\\'+args.organization+'.ovpn"'+'\r\n'
+        ovpnnsi+=r'    Delete /REBOOTOK "$OVPN_CONF_DIR\\'+args.organization+'-*"'+'\r\n'
+        ovpnnsi+=r'    Delete /REBOOTOK "$UNINSTALLER_PATH"'+'\r\n'
+        ovpnnsi+=r'SectionEnd'+'\r\n'
+        return ovpnnsi
+
+
+    # TODO: sanity check args.output_path
+    # maybe have funcs that check for existing path, valid path, writable path, etc?
+
+    def create_ovpn_nsis_installer(self, args):
+        # TODO: normalize / sanity check this. NSIS is strict: must be backslashes!
+        os.makedirs(os.path.abspath(os.path.expanduser(args.output_path)), exist_ok=True)
+        output_exe = os.path.abspath(os.path.expanduser(args.output_path+'/VPN-config-'+args.keyname+'.exe'))
+        config_zip = os.path.abspath(os.path.expanduser('certified-keys/{}.zip'.format(args.keyname)))
+
+        # BLOCKINGTODO: handle values of ovpn_nsi_path with spaces etc. canNOT wrap them in double quotes
+        #       ... apparently NSIS won't handle those. ??
+        #       oh actually also things like output_exe are affected by this too
+        if args.also_cacert:
+            # this means that the user supplied the --installer-with-ca argument
+            # we abspath() it, because makensis requires absolute paths.
+            # this also ensures backslash path separators, b/c nsis can't handle forward slash.
+            # TODO: verify the path of args.also_cacert in argparser so it fails immediately if it's bad
+            also_cacert_path = os.path.abspath(os.path.expanduser(args.also_cacert))
+            nsisargs=[makensisexe,
+#            nsisargs=['"{}"'.format(makensisexe),
+                      r'/DOUTPUT_EXE={}'.format(output_exe),
+                      r'/DCONFIG_CACRT={}'.format(also_cacert_path),
+                      r'/DCONFIG_ZIP={}'.format(config_zip),
+                      r'{}'.format(ovpn_nsi_path),
+                      r'{}'.format(ca_nsi_path)]
+            fcnf=open(ca_nsi_path,'w')
+            fcnf.write(MINIPKI.build_ca_nsi(self, args))
+            fcnf.close()
+            fcnf=open(ovpn_nsi_path,'w')
+            fcnf.write(MINIPKI.build_ovpn_nsi(self, args))
+            fcnf.close()
+        else:
+            # the user did not supply the --installer-with-ca argument
+            # omit /DCONFIG_CACRT and the canh_path nsi file arguments
+            nsisargs=[makensisexe,
+#            nsisargs=['"{}"'.format(makensisexe),
+                      r'/DOUTPUT_EXE={}'.format(output_exe),
+                      r'/DCONFIG_ZIP={}'.format(config_zip),
+                      r'{}'.format(ovpn_nsi_path)]
+            fcnf=open(ovpn_nsi_path,'w')
+            fcnf.write(MINIPKI.build_ovpn_nsi(self, args))
+            fcnf.close()
+
+        logging.debug("Calling makensis.exe...")
+        logging.debug(nsisargs)
+        subprocess.check_call(nsisargs)
+
+    # TODO: this isn't exposted in argparse so.
+    def build_ca_nsis_installer(self, args):
+        output_exe = os.path.abspath(os.path.expanduser(args.output_path + '/security-certificate.exe'))
+        cacert_path = os.path.abspath(os.path.expanduser(args.cacert))
+
+        nsisargs=[makensisexe,
+                  r'/DOUTPUT_EXE="{}"'.format(output_exe),
+                  r'/DCONFIG_CACRT="{}"'.format(cacert_path),
+                  r'"{}"'.format(castub_nsi_path),
+                  r'"{}"'.format(ca_nsi_path)]
+
+        fcnf=open(ca_nsi_path,'w')
+        fcnf.write(MINIPKI.build_ca_nsi(self, args))
+        fcnf.close()
+        fcnf=open(castub_nsi_path,'w')
+        fcnf.write(MINIPKI.build_castub_nsi(self, args))
+        fcnf.close()
+
+        subprocess.check_call(nsisargs)
+
+    
     def examinecsr(self, args):
         possible_csrs =  [args.csrfile, args.csrfile+".csr", "certified-keys/"+args.csrfile, 
                           "certified-keys/"+args.csrfile+".csr"]
@@ -416,6 +675,15 @@ class MINIPKI:
         proc = subprocess.Popen([opensslbin, "req", "-in", csrfile, "-noout", "-text"],
                                 env={"OPENSSL_CONF": CA_CNF})
         proc.wait()
+
+    def dmisc(self, args):
+        if args.action == 'pwd':
+            print(os.getcwd())
+        elif args.action == 'scriptdir':
+            print(scriptdir)
+        else:
+            print("Action "+args.action+" not defined.")
+
 
 def main(*args):
     global minipki
@@ -438,11 +706,13 @@ def main(*args):
                     break
             else:
                 # if after all that we have nothing, exit
-                print("Can't find OpenSSL binary. Try adding the location of openssl.exe to your PATH environment variable. Exiting...")
+                print("Can't find OpenSSL binary. Try adding the location of openssl.exe to", 
+                      "your PATH environment variable. Exiting...")
                 sys.exit(1)
 
     elif (os.name == 'posix'):
-        # for POSIX systems we're just going to assume that openssl is in the path and $EDITOR is an existing env var. 
+        # for POSIX systems we're just going to assume that openssl is in the path and $EDITOR 
+        # is an existing env var. 
         inpath=which("openssl")
         if (inpath):
             opensslbin=inpath
@@ -563,7 +833,32 @@ def main(*args):
     subparser_vpnconfig.add_argument('--vpnport', action='store', type=int, default=1194, 
                                      help='Supply a port for the VPN server. Default is 1194.')
 
+    h='Build an installer .exe for the OpenVPN configuration after generating it. '
+    h+='See the readme file for more information on this option. ' 
+    subparser_vpnconfig.add_argument('--installer', action='store_true', help=h)
+
+    h='(Implies --installer.) '
+    h+='Build an installer that includes BOTH the OpenVPN configuration AND a root CA that '
+    h+='is installed to a user\'s trusted CAs. '
+    h+='By default assumes that your VPN CA is the '
+    h+='same as the trusted root CA, but you can specify an optional "cafile" argument if '
+    h+='you have a separate PKI for browser certs and VPN certs.'
+    subparser_vpnconfig.add_argument('--installer-with-ca', nargs='?', type=str, const='ca.crt.pem',
+                                     default=False, dest='also_cacert', metavar='CACRT', help=h)
+
     subparser_vpnconfig.set_defaults(func=minipki.make_ovpn_zip)
+
+    h='Specify the folder for the installer built by --installer or --installer-with-ca. '
+    h+='Default is your home directory.'
+    subparser_vpnconfig.add_argument('--installer-output', type=str, dest='output_path', 
+                                     default='~/', help=h)
+
+    # TODO: this is really not the ideal way to handle this
+    h='Specify the organization name, used for the installer in things like the add/remove programs '
+    h+='dialog, etc. REQUIRED.'
+    subparser_vpnconfig.add_argument('--organization', type=str, required=True, help=h)
+
+
 
     h='Generate a VPN private key, sign it, create a VPN configuration from it, and zip them all up.'
     subparser_vpngensign = subparsers.add_parser('vpngensign', help=h)
@@ -577,11 +872,46 @@ def main(*args):
     subparser_vpngensign.add_argument('--vpnport', action='store', type=int, default=1194, 
                                       help='Supply a port for the VPN server. Default is 1194.')
 
+    # TODO: add this argument for the non-vpn gensign subcommand
+    h='Build an installer .exe for the OpenVPN configuration after generating it. '
+    h+='See the readme file for more information on this option. ' 
+    subparser_vpngensign.add_argument('--installer', action='store_true', help=h)
+
+    # TODO: not sure this help is really clear. 
+    h='(Implies --installer.) '
+    h+='Build an installer that includes BOTH the OpenVPN configuration AND a root CA that '
+    h+='is installed to a user\'s trusted CAs. '
+    h+='By default assumes that your VPN CA is the '
+    h+='same as the trusted root CA, but you can specify an optional "cafile" argument if '
+    h+='you have a separate PKI for browser certs and VPN certs.'
+    # notes to self: nargs=? means if it's present with a positional argument after, the posarg is used;
+    # if no posarg, const is used; if not present at all, default is used. the dest setting means
+    # that's how you access the stored value, e.g. dest.cacrt will contain the posarg or ca.crt.pem or
+    # False depending on how the user chooses. metavar is simply what is displayed when you run --help.
+    subparser_vpngensign.add_argument('--installer-with-ca', nargs='?', type=str, const='ca.crt.pem',
+                                      default=False, dest='also_cacert', metavar='CACRT', help=h)
+
+    h='Specify the folder for the installer built by --installer or --installer-with-ca. '
+    h+='Default is your home directory.'
+    subparser_vpngensign.add_argument('--installer-output', type=str, dest='output_path', 
+                                      default='~/', help=h)
+
+    # TODO: this is really not the ideal way to handle this
+    h='Specify the organization name, used for the installer in things like the add/remove programs '
+    h+='dialog, etc. REQUIRED.'
+    subparser_vpngensign.add_argument('--organization', type=str, required=True, help=h)
+
     h='An existing openssl.cnf file. Useful if all of your certs can use the same file because the '
     h+='commonName is optional (as is the case with my OpenVPN setup).'
     subparser_vpngensign.add_argument('--cnf', action='store', help=h)
 
     subparser_vpngensign.set_defaults(func=minipki.vpngensign)
+
+    # This is just for developing shit
+    if MINIPKI_DEBUG:
+        subparser_debug = subparsers.add_parser('debug', help='Debugging options...')
+        subparser_debug.add_argument('action', type=str, action='store')
+        subparser_debug.set_defaults(func=minipki.dmisc)
 
     parsed = argparser.parse_args()
     parsed.func(parsed)
