@@ -725,7 +725,8 @@ def main(*args):
     argparser = argparse.ArgumentParser(description='Perform basic tasks for a mini-PKI')
     subparsers = argparser.add_subparsers()
     
-    subparser_makecnf = subparsers.add_parser('makecnf', help="Generate an openssl.cnf file for a server")
+    subparser_makecnf = subparsers.add_parser('makecnf', 
+                                              help="Generate an openssl.cnf file for a server")
 
     h =  'Supply a keyname, such as myserver or myserver.sub.domain.tld. '
     h += 'By default, this also specifies a hostname'
