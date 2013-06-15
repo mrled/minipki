@@ -39,8 +39,8 @@ If you already have a CA, you'll need to make sure the layout is the same as I e
     - newcerts/
         - each signed certificate, stored as $serialnumber.pem, such as 01.pem, 02.pem, etc
     - private/
-    - ca.key.pem
-    - serverkeys/
+        - ca.key.pem
+    - certified-keys/
         - this can be empty; it's where the new keys, certs, cnf files, and csrs for servers will be saved
     - ca.crt.pem
     - ca.openssl.cnf
