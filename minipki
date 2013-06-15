@@ -42,7 +42,7 @@ ca_nsi_path     = os.path.abspath(os.getenv("TEMP") + '/ca.nsi')
 castub_nsi_path = os.path.abspath(os.getenv("TEMP") + '/castub.nsi')
 
 if MINIPKI_DEBUG: 
-    logging.basicConfig(level=logging.DEBUG) #show all messages up to and including logging.debug() messages
+    logging.basicConfig(level=logging.DEBUG) 
 
 def is_exe(fpath):
     return os.path.exists(fpath) and os.access(fpath, os.X_OK)
@@ -65,19 +65,18 @@ def which(program):
 class MINIPKI:
 
     def initca(self, args):
-        if args.purge: # if CA files already exist, purge them
+        if args.purge:
             for p in os.listdir("."): 
                 if os.path.isfile(p) or os.path.islink(p): #os.unlink() handles both cases
                     os.unlink(p)
                 elif os.path.isdir(p):
                     shutil.rmtree(p)
-        else: #not told to purge, so if one of these exists, exit before overwriting something important
+        else: 
             for p in ["serial.txt", "index.txt", "private", "newcerts", "certified-keys", CA_CNF]:
                 if (os.path.exists(p)):
                     print("Path '" + p + "' exists, exiting...")
                     sys.exit(1)
 
-        #if not (os.path.exists(CA_CNF)):
         fcnf=open(CA_CNF,'w')
         fcnf.write(MINIPKI.build_ca_cnf(self,args))
         fcnf.close()
@@ -90,23 +89,25 @@ class MINIPKI:
         os.mkdir("newcerts",0o700)
         os.mkdir("certified-keys",0o700)
 
-        # subprocess.check_call([opensslbin, 
-        #                        "req", #request a new key
-        #                        "-config", CA_CNF,
-        #                        "-nodes",  #"No DES", i.e. don't create an encrypted key
-        #                        "-x509", #puts out a self-signed cert instead of a csr; required for a CA
-        #                        "-days", str(CA_VALID_DAYS),
-        #                        "-out", "ca.crt.pem", #will output to stdout otherwise, which we don't want
-        #                        "-newkey", "rsa:"+str(keysize), #create an RSA key, store it where cnf says
-        #                        ])
         proc = subprocess.Popen([opensslbin, 
                                  "req", #request a new key
                                  "-config", CA_CNF,
-                                 "-nodes",  #don't create an encrypted key (& don't prompt for enc password)
-                                 "-x509", #puts out a self-signed cert instead of a csr; required for a CA
+
+                                 # don't create an encrypted key (& don't prompt 
+                                 # for enc password): 
+                                 "-nodes",  
+
+                                 # put out a self-signed cert instead of a csr; 
+                                 # required for a CA
+                                 "-x509", 
                                  "-days", str(CA_VALID_DAYS),
-                                 "-out", "ca.crt.pem", #will output to stdout otherwise, which we don't want
-                                 "-newkey", "rsa:"+str(keysize)], #create an RSA key store it where cnf says
+
+                                 #will output to stdout otherwise, which we don't want
+                                 "-out", "ca.crt.pem", 
+
+
+                                 #create an RSA key store it where cnf says
+                                 "-newkey", "rsa:"+str(keysize)], 
                                 env={"OPENSSL_CONF": CA_CNF})
         proc.wait()
 
@@ -115,7 +116,8 @@ class MINIPKI:
         logging.debug("genprivkey args: %r" % args)
         if args.cnf: 
             if not (os.path.exists(args.cnf)):
-                print("Server configuration file specified on command line as %r, but file does not exist. Exiting..." % args.cnf)
+                print("Server configuration file specified on command line as",
+                      "{}, but file does not exist. Exiting...".format(args.cnf))
                 sys.exit(1)
             servercnf=args.cnf
         else:
@@ -124,12 +126,11 @@ class MINIPKI:
                 logging.debug("genprivkey: openssl configuration file not present, generating...")
                 MINIPKI.makecnf(self,args)
 
-        #subprocess.check_call([opensslbin, "genrsa", "-out", "certified-keys/"+keyname+".key", str(keysize)])
-        proc = subprocess.Popen([opensslbin, "genrsa", "-out", "certified-keys/"+keyname+".key", str(keysize)],
+        proc = subprocess.Popen([opensslbin, "genrsa", "-out", 
+                                 "certified-keys/"+keyname+".key", str(keysize)],
                                 env={"OPENSSL_CONF": servercnf})
         proc.wait()
 
-        #subprocess.check_call([opensslbin, 
         proc = subprocess.Popen([opensslbin, 
                                  "req", 
                                  "-new", 
@@ -237,8 +238,11 @@ class MINIPKI:
         return cacnf
     
     def build_server_cnf(self, args):
+        """
+        Return an openssl.cnf file with the correct emailAddress field, 
+        commonName field, and optional subjectAltName section
+        """
         logging.debug("arguments: %r" % args)
-        """Return an openssl.cnf file with the correct emailAddress field, commonName field, and optional subjectAltName section"""
         # chunk1 is the part before the commonName field
         # then comes commonName
         # then emailAddress
@@ -275,8 +279,8 @@ class MINIPKI:
         cnline= "commonName = " + cn + "\n"
         logging.debug("cn is %r" % cn)
 
-        # pull email address out of CA config file - probably need to figure out a better way to do this
-        # it assumes there's only one emailAddress line
+        # pull email address out of CA config file - probably need to figure out a better
+        # way to do this. it assumes there's only one emailAddress line.
         fcacnf=open(CA_CNF,'r')
         emailexpr = re.compile('emailAddress.*@.*')
         for line in fcacnf:
@@ -306,7 +310,8 @@ class MINIPKI:
                 # "4" is a valid IP address! 
                 # this is not ideal b/c openssl doesn't accept IPs that are not dotted quads. <sigh>
                 # TODO: currently this doesn't match ipv6 addresses
-                # see also <http://stackoverflow.com/questions/319279/how-to-validate-ip-address-in-python>
+                # see also:
+                # <http://stackoverflow.com/questions/319279/how-to-validate-ip-address-in-python>
                 try:
                     socket.inet_aton(entry)
                     ip.append(entry)
@@ -325,7 +330,8 @@ class MINIPKI:
                 else:
                     ip.append(cn)
             except:
-                # looks cn isn't an IP address, so assume it's a hostname. check for it in the dns list. 
+                # looks cn isn't an IP address, so assume it's a hostname. check for it in
+                # the dns list. 
                 for entry in dns:
                     if (entry == cn): 
                         break
@@ -346,8 +352,6 @@ class MINIPKI:
             raise
 
         servercnf = chunk1 + cnline + emailline + chunk2 + sanchunk
-        #logging.debug(servercnf)
-        #print(servercnf)
         return servercnf
 
     def makecnf(self, args):
@@ -358,9 +362,6 @@ class MINIPKI:
     def signcerts(self, args):
         logging.debug("signcerts args: %r" % args)
         keyname = args.keyname
-        # subprocess.check_call([opensslbin, "ca", "-batch", "-config",
-        #                        CA_CNF, "-in", "certified-keys/"+keyname+".csr",
-        #                        "-out", "certified-keys/"+keyname+".cert", "-days", str(SERVER_VALID_DAYS)])
 
         proc = subprocess.Popen([opensslbin, 
                                  "ca", 
@@ -420,7 +421,6 @@ class MINIPKI:
     def build_ovpn_config(self,args):
         ovpnfile =""
         ovpnfile+="client" + "\r\n"
-        #ovpnfile+="proto tcp-client" + "\r\n"
         ovpnfile+="proto udp" + "\r\n"
         ovpnfile+="dev tap" + "\r\n"
         ovpnfile+="dh dh1024.pem" + "\r\n"
@@ -454,7 +454,7 @@ class MINIPKI:
         canhnsi+='!include LogicLib.nsh' +'\r\n'
         canhnsi+='' +'\r\n'
         canhnsi+='!ifndef CONFIG_CACRT' +'\r\n'
-        canhnsi+='    !echo "You did not pass a /DCONFIG_CACRT=C:\path\to\ca.crt argument to makensis.exe!"' +'\r\n'
+        canhnsi+='    !echo "Missing /DCONFIG_CACRT argument for makensis.exe!"' +'\r\n'
         canhnsi+='    !echo "We are assuming there is a file ca.crt in the CWD."' +'\r\n'
         canhnsi+='    !define CONFIG_CACRT "ca.crt"' +'\r\n'
         canhnsi+='!endif' +'\r\n'
@@ -471,7 +471,7 @@ class MINIPKI:
         canhnsi+='    ${EndIf}' +'\r\n'
         canhnsi+='' +'\r\n'
         canhnsi+='    ; Firefox' +'\r\n'
-        canhnsi+='    ReadINIStr $1 "$APPDATA\Mozilla\Firefox\profiles.ini" "Profile0" "Path"' +'\r\n'
+        canhnsi+='    ReadINIStr $1 "$APPDATA\Mozilla\Firefox\profiles.ini" "Profile0" "Path"\r\n'
 
         # weird NSIS idiom: if there's an error, jump 0 lines; else jump +2 lines
         canhnsi+='        IfErrors 0 +2' +'\r\n' # if errors, jump 0 lines; else jump +2 lines
@@ -599,17 +599,20 @@ class MINIPKI:
     def create_ovpn_nsis_installer(self, args):
         # TODO: normalize / sanity check this. NSIS is strict: must be backslashes!
         os.makedirs(os.path.abspath(os.path.expanduser(args.output_path)), exist_ok=True)
-        output_exe = os.path.abspath(os.path.expanduser(args.output_path+'/VPN-config-'+args.keyname+'.exe'))
-        config_zip = os.path.abspath(os.path.expanduser('certified-keys/{}.zip'.format(args.keyname)))
+        output_exe = os.path.abspath(os.path.expanduser(
+            args.output_path+'/VPN-config-'+args.keyname+'.exe'))
+        config_zip = os.path.abspath(os.path.expanduser(
+            'certified-keys/{}.zip'.format(args.keyname)))
 
-        # BLOCKINGTODO: handle values of ovpn_nsi_path with spaces etc. canNOT wrap them in double quotes
-        #       ... apparently NSIS won't handle those. ??
+        # BLOCKINGTODO: handle values of ovpn_nsi_path with spaces etc. 
+        #    canNOT wrap them in double quotes - NSIS won't handle those. 
         #       oh actually also things like output_exe are affected by this too
         if args.also_cacert:
             # this means that the user supplied the --installer-with-ca argument
             # we abspath() it, because makensis requires absolute paths.
             # this also ensures backslash path separators, b/c nsis can't handle forward slash.
-            # TODO: verify the path of args.also_cacert in argparser so it fails immediately if it's bad
+            # TODO: verify the path of args.also_cacert in argparser so it fails 
+            # immediately if it's bad
             also_cacert_path = os.path.abspath(os.path.expanduser(args.also_cacert))
             nsisargs=[makensisexe,
 #            nsisargs=['"{}"'.format(makensisexe),
@@ -628,7 +631,6 @@ class MINIPKI:
             # the user did not supply the --installer-with-ca argument
             # omit /DCONFIG_CACRT and the canh_path nsi file arguments
             nsisargs=[makensisexe,
-#            nsisargs=['"{}"'.format(makensisexe),
                       r'/DOUTPUT_EXE={}'.format(output_exe),
                       r'/DCONFIG_ZIP={}'.format(config_zip),
                       r'{}'.format(ovpn_nsi_path)]
@@ -740,14 +742,17 @@ def main(*args):
     subparser_makecnf.set_defaults(func=minipki.makecnf)
 
     subparser_examinecsr = subparsers.add_parser('examinecsr', help="Examine an existing CSR")
-    subparser_examinecsr.add_argument('csrfile', action='store', help='Supply the path to a .csr file')
+    subparser_examinecsr.add_argument('csrfile', action='store', 
+                                      help='Supply the path to a .csr file')
     subparser_examinecsr.set_defaults(func=minipki.examinecsr)
 
-    subparser_genkey = subparsers.add_parser('genkey', help='Generate a private key & CSR for a server')
+    subparser_genkey = subparsers.add_parser('genkey', 
+                                             help='Generate a private key & CSR for a server')
 
 
-    h = 'Supply a keyname, such as myserver or myserver.sub.domain.tld. The filenames for the '
-    h+= 'cert, CSR, etc are based on this name. This subcommand also looks for an openssl configuration '
+    h = 'Supply a keyname, such as myserver or myserver.sub.domain.tld. '
+    h+= 'The filenames for the cert, CSR, etc are based on this name. This '
+    h+= 'subcommand also looks for an openssl configuration '
     h+= 'file named keyname.openssl.cnf; if it does not find one, it will generate one for you.'
     subparser_genkey.add_argument('keyname', type=str, action='store', help=h)
 
@@ -758,23 +763,25 @@ def main(*args):
     h+='myserver,myserver.domain.tld,10.10.10.10 .'
     subparser_genkey.add_argument('--subjectAltName',   action='store', help=h)
 
-    h ='An existing openssl.cnf file. Useful if all of your server certs can use the same file because '
-    h+='the commonName is optional (as is the case with my OpenVPN setup).'
+    h ='An existing openssl.cnf file. Useful if all of your server certs can '
+    h+='use the same file because the commonName is optional '
+    h+='(as is the case with my OpenVPN setup).'
     subparser_genkey.add_argument('--cnf', action='store', help=h)
 
     subparser_genkey.set_defaults(func=minipki.genprivkey)
     
     subparser_sign = subparsers.add_parser('sign', help='Sign a CSR with an existing CA key')
 
-    h ='Supply a keyname, such as myserver or myserver.sub.domain.tld. The filenames for the cert, CSR, '
-    h+='etc are based on this name.'
+    h ='Supply a keyname, such as myserver or myserver.sub.domain.tld. '
+    h+='The filenames for the cert, CSR, etc are based on this name.'
     subparser_sign.add_argument('keyname', type=str, action='store', help=h)
     subparser_sign.set_defaults(func=minipki.signcerts)
 
     subparser_gensign = subparsers.add_parser('gensign', help='Both generate and sign in one step')
 
-    h ='Supply a keyname, such as myserver or myserver.sub.domain.tld. The filenames for the cert, CSR, '
-    h+='etc are based on this name. This subcommand also looks for an openssl configuration file named '
+    h ='Supply a keyname, such as myserver or myserver.sub.domain.tld. The '
+    h+='filenames for the cert, CSR, etc are based on this name. This '
+    h+='subcommand also looks for an openssl configuration file named '
     h+='keyname.openssl.cnf; if it does not find one, it will generate one for you.'
     subparser_gensign.add_argument('keyname', type=str, action='store', help=h)
 
@@ -785,8 +792,9 @@ def main(*args):
     h+='myserver,myserver.domain.tld,10.10.10.10 .'
     subparser_gensign.add_argument('--subjectAltName',   action='store', help=h)
 
-    h='An existing openssl.cnf file. Useful if all of your server certs can use the same file because '
-    h+='the commonName is optional (as is the case with my OpenVPN setup).'
+    h='An existing openssl.cnf file. Useful if all of your server certs can '
+    h+='use the same file because the commonName is optional '
+    h+='(as is the case with my OpenVPN setup).'
     subparser_gensign.add_argument('--cnf', action='store', help=h)
 
     subparser_gensign.set_defaults(func=minipki.gensign)
@@ -802,21 +810,24 @@ def main(*args):
     h+='subsequent server certificates.'
     subparser_initca.add_argument('--organizationName', action='store', help=h)
 
-    h='Recommended. Provide an email address to be included on the CA certificate and any subsequent '
-    h+='server certificates.'
+    h='Recommended. Provide an email address to be included on the CA '
+    h+='certificate and any subsequent server certificates.'
     subparser_initca.add_argument('--emailAddress', action='store', help=h)
 
-    h='Provide a country name to be included on the CA certificate and any subsequent server certificates.'
+    h='Provide a country name to be included on the CA certificate and any '
+    h+='subsequent server certificates.'
     subparser_initca.add_argument('--countryName', action='store', help=h)
 
-    h='Provide a state or province name to be included on the CA certificate and any subsequent server '
-    h+='certificates.'
+    h='Provide a state or province name to be included on the CA certificate '
+    h+='and any subsequent server certificates.'
     subparser_initca.add_argument('--stateOrProvinceName', action='store', help=h)
 
-    h='Provide a locality name to be included on the CA certificate and any subsequent server certificates.'
+    h='Provide a locality name to be included on the CA certificate and any '
+    h+='subsequent server certificates.'
     subparser_initca.add_argument('--localityName', action='store', help=h)
 
-    h='THIS OPTION WILL DELETE ALL FILES IN THE CURRENT DIRECTORY. It is really intended just for debugging.'
+    h='THIS OPTION WILL DELETE ALL FILES IN THE CURRENT DIRECTORY. '
+    h+='It is really intended just for debugging.'
     subparser_initca.add_argument('--purge', action='store_true', help=h)
 
     subparser_initca.set_defaults(func=minipki.initca)
@@ -824,7 +835,8 @@ def main(*args):
     h='Create a vpn configuration from an existing signed private key, and zip them all up.'
     subparser_vpnconfig = subparsers.add_parser('vpnconfig', help=h)
 
-    h='Supply a keyname, such as jsmith. The filenames for the cert, CSR, etc are based on this name.'
+    h='Supply a keyname, such as jsmith. The filenames for the cert, CSR, etc '
+    h+='are based on this name.'
     subparser_vpnconfig.add_argument('keyname', type=str, action='store', help=h)
 
     h='Supply a hostname for the VPN server. Required.'
@@ -863,7 +875,8 @@ def main(*args):
     h='Generate a VPN private key, sign it, create a VPN configuration from it, and zip them all up.'
     subparser_vpngensign = subparsers.add_parser('vpngensign', help=h)
 
-    h='Supply a keyname, such as jsmith. The filenames for the cert, CSR, etc are based on this name.'
+    h='Supply a keyname, such as jsmith. The filenames for the cert, CSR, etc '
+    h+='are based on this name.'
     subparser_vpngensign.add_argument('keyname', type=str, action='store', help=h)
 
     subparser_vpngensign.add_argument('--vpnserver', action='store', required=True, 
@@ -884,10 +897,12 @@ def main(*args):
     h+='By default assumes that your VPN CA is the '
     h+='same as the trusted root CA, but you can specify an optional "cafile" argument if '
     h+='you have a separate PKI for browser certs and VPN certs.'
-    # notes to self: nargs=? means if it's present with a positional argument after, the posarg is used;
-    # if no posarg, const is used; if not present at all, default is used. the dest setting means
-    # that's how you access the stored value, e.g. dest.cacrt will contain the posarg or ca.crt.pem or
-    # False depending on how the user chooses. metavar is simply what is displayed when you run --help.
+    # notes to self: nargs=? means if it's present with a positional argument 
+    # after, the posarg is used; if no posarg, const is used; if not present at
+    # all, default is used. the dest setting means that's how you access the 
+    # stored value, e.g. dest.cacrt will contain the posarg or ca.crt.pem or
+    # False depending on how the user chooses. metavar is simply what is 
+    # displayed when you run --help.
     subparser_vpngensign.add_argument('--installer-with-ca', nargs='?', type=str, const='ca.crt.pem',
                                       default=False, dest='also_cacert', metavar='CACRT', help=h)
 
