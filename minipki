@@ -53,9 +53,9 @@ class MINIPKI:
         fserial.write("01")
         fserial.close()
         open("index.txt","w").close() #create an empty file
-        os.mkdir("private",700)
-        os.mkdir("newcerts",700)
-        os.mkdir("certified-keys",700)
+        os.mkdir("private",0o700)
+        os.mkdir("newcerts",0o700)
+        os.mkdir("certified-keys",0o700)
 
         subprocess.check_call([opensslbin, 
                                "req", #request a new key
