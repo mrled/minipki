@@ -37,9 +37,9 @@ makensisexe=os.path.normpath(r"C:\Program Files (x86)\NSIS\makensis.exe")
 
 scriptdir = os.path.dirname(os.path.realpath(__file__))
 
-ovpn_nsi_path   = os.path.abspath(os.getenv("TEMP") + '/openvpn-config.nsi')
-ca_nsi_path     = os.path.abspath(os.getenv("TEMP") + '/ca.nsi')
-castub_nsi_path = os.path.abspath(os.getenv("TEMP") + '/castub.nsi')
+#ovpn_nsi_path   = os.path.abspath(os.getenv("TEMP") + '/openvpn-config.nsi')
+#ca_nsi_path     = os.path.abspath(os.getenv("TEMP") + '/ca.nsi')
+#castub_nsi_path = os.path.abspath(os.getenv("TEMP") + '/castub.nsi')
 
 if MINIPKI_DEBUG: 
     logging.basicConfig(level=logging.DEBUG) 
@@ -406,15 +406,13 @@ class MINIPKI:
         zovpn.close()
 
         if args.installer or args.also_cacert:
-            MINIPKI.create_ovpn_nsis_installer(self, args)
+            MINIPKI.build_ovpn_nsis_installer(self, args)
 
     def vpngensign(self, args):
         import zipfile
         MINIPKI.gensign(self,args)
         MINIPKI.make_ovpn_zip(self,args)
 
-    # TODO: standardize "build_..." vs "create_..." verbage in function names
-    # TODO: standardize self.func(args) vs MINIPKI.func(self, args)
     # TODO: do I need to pass around args all the time? can I save those to the object and then
     #       just look them up directly? 
 
@@ -596,7 +594,7 @@ class MINIPKI:
     # TODO: sanity check args.output_path
     # maybe have funcs that check for existing path, valid path, writable path, etc?
 
-    def create_ovpn_nsis_installer(self, args):
+    def build_ovpn_nsis_installer(self, args):
         # TODO: normalize / sanity check this. NSIS is strict: must be backslashes!
         os.makedirs(os.path.abspath(os.path.expanduser(args.output_path)), exist_ok=True)
         output_exe = os.path.abspath(os.path.expanduser(
@@ -615,7 +613,6 @@ class MINIPKI:
             # immediately if it's bad
             also_cacert_path = os.path.abspath(os.path.expanduser(args.also_cacert))
             nsisargs=[makensisexe,
-#            nsisargs=['"{}"'.format(makensisexe),
                       r'/DOUTPUT_EXE={}'.format(output_exe),
                       r'/DCONFIG_CACRT={}'.format(also_cacert_path),
                       r'/DCONFIG_ZIP={}'.format(config_zip),
@@ -644,7 +641,8 @@ class MINIPKI:
 
     # TODO: this isn't exposted in argparse so.
     def build_ca_nsis_installer(self, args):
-        output_exe = os.path.abspath(os.path.expanduser(args.output_path + '/security-certificate.exe'))
+        output_exe = os.path.abspath(os.path.expanduser(args.output_path +
+                                                        '/security-certificate.exe'))
         cacert_path = os.path.abspath(os.path.expanduser(args.cacert))
 
         nsisargs=[makensisexe,
@@ -690,7 +688,6 @@ class MINIPKI:
 def main(*args):
     global minipki
     minipki=MINIPKI()
-    #logging.debug("main args: " + args)
     global opensslbin
     if (os.name == 'nt'):
         inpath=which("openssl.exe")
