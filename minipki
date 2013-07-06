@@ -16,6 +16,7 @@ import subprocess
 import socket
 import re
 import configparser
+from string import Template
 
 scriptdir = os.path.abspath(os.curdir)
 defaultconfigpath = os.path.join(scriptdir, 'config.default')
@@ -38,6 +39,12 @@ else:
 
 def is_exe(fpath):
     return os.path.exists(fpath) and os.access(fpath, os.X_OK)
+
+def template_from_file(fpath):
+    rf = open(os.path.abspath(fpath, 'r'))
+    data = rf.read()
+    rf.close()
+    return Template(data)
 
 def which(program):
     fpath, fname = os.path.split(program)
@@ -131,99 +138,28 @@ def genprivkey(self, args):
     proc.wait()
 
 def build_ca_cnf(self, args):
-    # chunk1 is the stuff before the user settings
-    # then come a few user-customizable things
-    # then comes chunk2, the bulk of the file
+    t = template_from_file('openssl.cnf.ca.template')
 
-    cacnf ="\n"
-    cacnf+="# openssl.cnf.ca\n"
-    cacnf+="# Via minipki\n"
-    cacnf+="\n"
-    cacnf+="HOME                    = .\n"
-    cacnf+="RANDFILE                = $ENV::HOME/.rnd\n"
-    cacnf+="\n"
-    cacnf+="[ root_ca_distinguished_name ]\n"
-
-    # this is checked by argparse so we know it exists
-    cacnf+= "commonName = " + args.ca_commonName + "\n"
+    emailAddressLine = countryNameLine = stateOrProvinceLine = ""
+    localityNameLine = organizationNameLine = ""
     if args.emailAddress:
-        cacnf += "emailAddress = " + args.emailAddress + "\n"
+        emailAddressLine = "emailAddress = " + args.emailAddress
     if args.countryName:
-        cacnf += "countryName = " + args.countryName + "\n"
-    if args.stateOrProvinceName:
-        cacnf += "stateOrProvinceName = " + args.stateOrProvinceName + "\n"
+        countryNameLine = "countryName = " + args.countryName
+    if args.stateOrProvince:
+        stateOrProvinceLine = "stateOrProvince = " + args.stateOrProvince
     if args.localityName:
-        cacnf += "localityName = " + args.localityName + "\n"
-    if args.organizationName:
-        cacnf += "organizationName = " + args.organizationName + "\n"
+        localityNameLine = "localityName = " + args.localityName
+    if args.organizationName: 
+        organizationNameLine = "organizationName = " + args.organizationName
 
-    cacnf+="\n"
-    cacnf+="[ ca ]\n"
-    cacnf+="default_ca      = CA_default\n"
-    cacnf+="\n"
-    cacnf+="[ CA_default ]\n"
-    cacnf+="dir             = .\n"
-    cacnf+="#certs           = $dir/certs\n"
-    cacnf+="new_certs_dir   = $dir/newcerts\n"
-    cacnf+="crl_dir         = $dir/crl\n"
-    cacnf+="database        = $dir/index.txt\n"
-    cacnf+="\n"
-    cacnf+="certificate     = $dir/ca.crt.pem\n"
-    cacnf+="serial          = $dir/serial.txt\n"
-    cacnf+="crl             = $dir/ca.crl.pem\n"
-    cacnf+="private_key     = $dir/private/ca.key.pem\n"
-    cacnf+="RANDFILE        = $dir/private/.rand\n"
-    cacnf+="x509_extensions = usr_cert\n"
-    cacnf+="copy_extensions	= copy\n"
-    cacnf+="unique_subject  = no\n"
-    cacnf+="name_opt        = ca_default\n"
-    cacnf+="cert_opt        = ca_default\n"
-    cacnf+="default_crl_days= 30\n"
-    cacnf+="default_days    = 365\n"
-    cacnf+="default_md      = sha1\n"
-    cacnf+="preserve        = no\n"
-    cacnf+="policy          = policy_ca\n"
-    cacnf+="\n"
-    cacnf+="[ policy_ca ]\n"
-    cacnf+="countryName             = optional\n"
-    cacnf+="stateOrProvinceName     = optional\n"
-    cacnf+="organizationName        = optional\n"
-    cacnf+="organizationalUnitName  = optional\n"
-    cacnf+="commonName              = supplied\n"
-    cacnf+="emailAddress            = optional\n"
-    cacnf+="\n"
-    cacnf+="[ policy_anything ]\n"
-    cacnf+="countryName             = optional\n"
-    cacnf+="stateOrProvinceName     = optional\n"
-    cacnf+="localityName            = optional\n"
-    cacnf+="organizationName        = optional\n"
-    cacnf+="organizationalUnitName  = optional\n"
-    cacnf+="commonName              = supplied\n"
-    cacnf+="emailAddress            = optional\n"
-    cacnf+="\n"
-    cacnf+="[ req ]\n"
-    cacnf+="default_bits            = 4096\n"
-    cacnf+="default_keyfile         = ./private/ca.key.pem\n"
-    cacnf+="default_md              = sha1\n"
-    cacnf+="prompt                  = no\n"
-    cacnf+="distinguished_name      = root_ca_distinguished_name\n"
-    cacnf+="x509_extensions         = v3_ca\n"
-    cacnf+="string_mask             = nombstr\n"
-    cacnf+="req_extensions          = v3_req\n"
-    cacnf+="\n"
-    cacnf+="[ usr_cert ]\n"
-    cacnf+="basicConstraints        = CA:FALSE\n"
-    cacnf+="subjectKeyIdentifier    = hash\n"
-    cacnf+="authorityKeyIdentifier  = keyid,issuer:always\n"
-    cacnf+="\n"
-    cacnf+="[ v3_req ]\n"
-    cacnf+="basicConstraints        = CA:FALSE\n"
-    cacnf+="keyUsage                = nonRepudiation, digitalSignature, keyEncipherment\n"
-    cacnf+="\n"
-    cacnf+="[ v3_ca ]\n"
-    cacnf+="subjectKeyIdentifier    = hash\n"
-    cacnf+="authorityKeyIdentifier  = keyid:always,issuer:always\n"
-    cacnf+="basicConstraints        = CA:true\n"
+    cacnf = t.substitute(ca_commonName = args.ca_commonName,
+                         emailAddressLine = emailAddressLine,
+                         countryNameLine = countryNameLine,
+                         stateOrProvinceLine = stateOrProvinceLine,
+                         localityNameLine = localityNameLine,
+                         organizationNameLine = organizationNameLine,
+                         default_keysize = config['keysize'])
     return cacnf
 
 def build_server_cnf(self, args):
@@ -232,65 +168,21 @@ def build_server_cnf(self, args):
     commonName field, and optional subjectAltName section
     """
     logging.debug("arguments: %r" % args)
-    # chunk1 is the part before the commonName field
-    # then comes commonName
-    # then emailAddress
-    # then chunk2
-    # then the subjectAltName stuff, if present
-    chunk1= "# server openssl configuration file\n"
-    chunk1+="HOME                    = .\n"
-    chunk1+="RANDFILE                = $ENV::HOME/.rnd\n"
-    chunk1+="\n"
-    chunk1+="[ req ]\n"
-    chunk1+="default_bits            = " + str(keysize) + "\n"
-    chunk1+="default_md              = sha1\n"
-    chunk1+="prompt                  = no\n"
-    chunk1+="string_mask             = nombstr\n"
-    chunk1+="\n"
-    chunk1+="distinguished_name      = req_distinguished_name\n"
-    chunk1+="\n"
-    chunk1+="x509_extensions         = v3_req\n"
-    chunk1+="req_extensions          = v3_req\n"
-    chunk1+="\n"
-    chunk1+="[ req_distinguished_name ]\n"
-    chunk1+="countryName = US\n"
-    chunk1+="stateOrProvinceName = .\n"
-    chunk1+="localityName = .\n"
-    chunk1+="organizationName = .\n"
+
+    t = template_from_file('openssl.cnf.ca.template')
 
     try:
-        if args.commonName is str:
-            cn = str(args.commonName)
-        else:
-            raise Exception("Should never be here lol")
+        cn = str(args.commonName)
     except:
         cn = args.keyname
-    cnline= "commonName = " + cn + "\n"
     logging.debug("cn is %r" % cn)
 
-    # pull email address out of CA config file - probably need to figure out a 
-    # better way to do this. it assumes there's only one emailAddress line.
-    fcacnf=open(CA_CNF,'r')
-    emailexpr = re.compile('emailAddress.*@.*')
-    for line in fcacnf:
-        match = emailexpr.search(line)
-        if match != None:
-            emailline = match.string
-            break #to find only the first one
-    else:
-        emailline = "\n"
-    fcacnf.close()
-
-    chunk2= ""
-    chunk2+="[ v3_req ]\n"
-    chunk2+="nsCertType = server\n"
-    chunk2+="basicConstraints = CA:FALSE\n"
-    chunk2+="keyUsage = nonRepudiation, digitalSignature, keyEncipherment\n"
 
     try:
         san = args.subjectAltName
         # we need a separate list of ip addresses vs DNS names
-        sanchunk="subjectAltName = @alt_names" + "\n\n" + "[ alt_names ]" + "\n"
+        subjectAltNameLines = "subjectAltName = @alt_names" + "\n\n" 
+        subjectAltNameLines+= "[ alt_names ]" + "\n"
         ip=[] 
         dns=[]
         for entry in san.split(","):
@@ -330,18 +222,21 @@ def build_server_cnf(self, args):
 
         seq=1
         for entry in dns:
-            sanchunk += "DNS." + str(seq) + " = " + entry + '\n'
+            subjectAltNameLines += "DNS." + str(seq) + " = " + entry + '\n'
             seq+=1
         seq=1
         for entry in ip:
-            sanchunk += "IP." + str(seq) + " = " + entry + '\n'
+            subjectAltNameLines += "IP." + str(seq) + " = " + entry + '\n'
             seq+=1
     except AttributeError: # there is no args.subjectAltName
-        sanchunk="\n"
+        subjectAltNameLines = ""
     except:
         raise
 
-    servercnf = chunk1 + cnline + emailline + chunk2 + sanchunk
+    servercnf = t.substitute(keysize = config['keysize'],
+                             commonName = cn,
+                             emailAddressLine = emailAddressLine,
+                             subjectAltNameLines = subjectAltNameLines)
     return servercnf
 
 def makecnf(self, args):

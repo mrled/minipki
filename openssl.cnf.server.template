@@ -1,0 +1,32 @@
+# server openssl configuration file
+HOME                    = .
+RANDFILE                = $ENV::HOME/.rnd
+
+[ req ]
+default_bits            = $keysize
+default_md              = sha1
+prompt                  = no
+string_mask             = nombstr
+
+distinguished_name      = req_distinguished_name
+
+x509_extensions         = v3_req
+req_extensions          = v3_req
+
+[ req_distinguished_name ]
+countryName = US
+stateOrProvinceName = .
+localityName = .
+organizationName = .
+
+commonName = $commonName
+
+$emailAddressLine
+
+[ v3_req ]
+nsCertType = server
+basicConstraints = CA:FALSE
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+
+$subjectAltNameLines
+
