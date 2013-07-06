@@ -1,0 +1,25 @@
+# Don't edit this file; instead, copy it to 'config.local' and change the
+# settings you need to change.
+
+[minipki]
+
+# I think 4096 is overkill for key size. OpenSSL's default is 1024 (I think?)
+# You can use 512 or something tiny for testing but make sure not to use 
+# that in production obviously
+keysize = 4096 
+
+# 7300 is a few days short of 20 years and is the longest that openssl will 
+# accept. 
+# In the commercial SSL world, CA certificates are valid for 10+ years, but
+# server certs are typically only valid for 1-3 years at a time. If you are
+# operating a CA using minipki, however, I don't expect those to be good
+# defaults, so these are just set to their maximum valid
+ca_valid_days = 7300
+server_valid_days = 7300
+
+# The script tries to find these automatically, but you can speciffy them if
+# you wish. 
+#makensisexe = C:\Program Files (x86)\NSIS\makensis.exe
+#opensslexe = C:\Program Files\OpenVPN\bin\openssl.exe
+
+debug = no
