@@ -1,0 +1,10 @@
+minipki todo:
+- NSIS under OS X
+- Make .ovpn generation work correctly and test it
+- Figure out revocation
+- Generate viscosity configuration as well
+- Update the README
+- PEP8 compliance lol ugh
+- Do I really need a MINIPKI object/class ? 
+- Clean up / organize the command line arguments
+
