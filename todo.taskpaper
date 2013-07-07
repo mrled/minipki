@@ -7,4 +7,11 @@ minipki todo:
 - PEP8 compliance lol ugh
 - Do I really need a MINIPKI object/class ? 
 - Clean up / organize the command line arguments
+- In makecnf(), get optional fields like countryName from the config file too
+- Clean up comments in makecnf() and make it shorter/more readable
+- Parameterize remote IP addresses and subnets in ovpn.template
+- Honestly go thru and make sure there's NOTHING specific to Neuric
+- integrate newvpnkey.py from work
+- document what needs to be installed for NSIS to work. LogicLib is 3rd party - anything else?
+- consider replacing NSIS with maybe one of these: http://cyrille.rossant.net/create-a-standalone-windows-installer-for-your-python-application/
 
