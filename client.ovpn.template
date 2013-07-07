@@ -1,0 +1,21 @@
+client
+proto $vpnprotocol
+dev tap
+dh dh1024.pem
+ca ca.crt.pem
+cert $keyname.cert
+key $keyname.key
+remote $vpnserver $vpnport
+cipher BF-CBC
+verb 2
+mute 20
+keepalive 10 120
+comp-lzo
+persist-key
+persist-tun
+float
+resolv-retry infinite
+nobind
+route-method exe
+route-delay 2
+route 192.168.55.0 255.255.255.0 192.168.59.1 3

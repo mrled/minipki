@@ -162,9 +162,9 @@ def build_ca_cnf(self, args):
                          default_keysize = config['keysize'])
     return cacnf
 
-def build_server_cnf(self, args):
+def makecnf(self, args):
     """
-    Return an openssl.cnf file with the correct emailAddress field, 
+    Write out an openssl.cnf file with the correct emailAddress field, 
     commonName field, and optional subjectAltName section
     """
     logging.debug("arguments: %r" % args)
@@ -237,12 +237,11 @@ def build_server_cnf(self, args):
                              commonName = cn,
                              emailAddressLine = emailAddressLine,
                              subjectAltNameLines = subjectAltNameLines)
-    return servercnf
 
-def makecnf(self, args):
     fcnf=open("certified-keys/"+args.keyname+".openssl.cnf",'w')
-    fcnf.write(build_server_cnf(self,args))
+    fcnf.write(servercnf)
     fcnf.close()
+
 
 def signcerts(self, args):
     logging.debug("signcerts args: %r" % args)
@@ -306,177 +305,40 @@ def vpngensign(self, args):
 #       object and then just look them up directly? 
 
 def build_ovpn_config(self,args):
-    ovpnfile =""
-    ovpnfile+="client" + "\r\n"
-    ovpnfile+="proto udp" + "\r\n"
-    ovpnfile+="dev tap" + "\r\n"
-    ovpnfile+="dh dh1024.pem" + "\r\n"
-    ovpnfile+="ca ca.crt.pem" + "\r\n"
-    ovpnfile+='cert ' + args.keyname+'.cert' + '\r\n'
-    ovpnfile+='key ' + args.keyname+'.key' + '\r\n'
-    ovpnfile+='remote ' + args.vpnserver + ' ' + str(args.vpnport) + "\r\n"
-    ovpnfile+="cipher BF-CBC" + "\r\n"
-    ovpnfile+="verb 2" + "\r\n"
-    ovpnfile+="mute 20" + "\r\n"
-    ovpnfile+="keepalive 10 120" + "\r\n"
-    ovpnfile+="comp-lzo" + "\r\n"
-    ovpnfile+="persist-key" + "\r\n"
-    ovpnfile+="persist-tun" + "\r\n"
-    ovpnfile+="float" + "\r\n"
-    ovpnfile+="resolv-retry infinite" + "\r\n"
-    ovpnfile+="nobind" + "\r\n"
-    ovpnfile+="route-method exe" + "\r\n"
-    ovpnfile+="route-delay 2" + "\r\n"
-    ovpnfile+="route 192.168.55.0 255.255.255.0 192.168.59.1 3" + "\r\n"
-    return ovpnfile
+    t = template_from_file('client.ovpn.template')
+    ovpn = t.substitute(keyname = args.keyname,
+                             vpnserver = config['vpnserver'],
+                             vpnport = config['vpnport'],
+                             vpnprotocol = config['vpnprotocol'])
+
+    return ovpn
 
 def build_ca_nsi(self, args):
     """Build the CA part of an NSI file which makensis can use.
     The file will *not* stand on its own; it's meant to be able to be 
     incorporated in a larger NSIS installer. If you want to create an installer
-     for just the CA, use build_ca_nsi() along with build_castub_nsi().
+    for just the CA, use build_ca_nsi() along with build_castub_nsi().
     """
-    canhnsi=''
-    canhnsi+='!include "'+scriptdir+'\contrib\certificate.nsh"' +'\r\n'
-    canhnsi+='!include LogicLib.nsh' +'\r\n'
-    canhnsi+='' +'\r\n'
-    canhnsi+='!ifndef CONFIG_CACRT' +'\r\n'
-    canhnsi+='    !echo "Missing /DCONFIG_CACRT argument for makensis.exe!"' +'\r\n'
-    canhnsi+='    !echo "We are assuming there is a file ca.crt in the CWD."' +'\r\n'
-    canhnsi+='    !define CONFIG_CACRT "ca.crt"' +'\r\n'
-    canhnsi+='!endif' +'\r\n'
-    canhnsi+='' +'\r\n'
-    canhnsi+='Section "Install '+args.organization+' Certificate Authority"' +'\r\n'
-    canhnsi+='    File "/oname=$TEMP\ca.crt" "${CONFIG_CACRT}"' +'\r\n'
-    canhnsi+='' +'\r\n'
-    canhnsi+='    ; Internet Explorer' +'\r\n'
-    canhnsi+='    Push "$TEMP\ca.crt"' +'\r\n'
-    canhnsi+='    Call AddCertificateToStore' +'\r\n'
-    canhnsi+='    Pop $0' +'\r\n'
-    canhnsi+='    ${If} $0 != success' +'\r\n'
-    canhnsi+='        MessageBox MB_OK "import failed: $0"' +'\r\n'
-    canhnsi+='    ${EndIf}' +'\r\n'
-    canhnsi+='' +'\r\n'
-    canhnsi+='    ; Firefox' +'\r\n'
-    canhnsi+='    ReadINIStr $1 "$APPDATA\Mozilla\Firefox\profiles.ini" "Profile0" "Path"\r\n'
-
-    # weird NSIS idiom: if there's an error, jump 0 lines; else jump +2 lines
-    canhnsi+='        IfErrors 0 +2' +'\r\n' 
-    # if there was an error, we arrive here, which jumps us to the end b/c 
-    # Firefox isn't installed (or hasn't been run on this account)
-    canhnsi+='        goto end' +'\r\n'
-
-    canhnsi+='    !insertmacro AddFirefoxCertificate $TEMP\ca.crt $APPDATA\Mozilla\Firefox\$1' +'\r\n'
-    canhnsi+='    ' +'\r\n'
-    canhnsi+='    end: ' +'\r\n'
-    canhnsi+='SectionEnd' +'\r\n'
-    canhnsi+='' +'\r\n'
-    return canhnsi
+    t = template_from_file('ca.nsi.template')
+    cansi = t.substitute(scriptdir = scriptdir,
+                         organization = config['organization'])
+    return cansi
 
 def build_castub_nsi(self, args):
-    """Generate an NSI file for just installing a CA to a user's trusted root store. 
-    (Must be combined with the output of build_ca_nsi().)
+    """Generate an NSI file for just installing a CA to a user's trusted root 
+    store. (Must be combined with the output of build_ca_nsi().)
     """
-    cansi=''
-    cansi+='!ifndef OUTPUT_EXE'+'\r\n'
-    cansi+='    !define OUTPUT_EXE "'+args.organization+'-CA.exe"'+'\r\n'
-    cansi+='!endif'+'\r\n'
-    cansi+='Name "'+args.organization+' certificate authority installer"'+'\r\n'
-    cansi+='Outfile "${OUTPUT_EXE}"'+'\r\n'
-    cansi+='RequestExecutionLevel admin'+'\r\n'
-    cansi+='ShowInstDetails nevershow'+'\r\n'
-    return cansi
+    t = template_from_file('castub.nsi.template')
+    castubnsi = t.substitute(organization = config['organization'])
+    return castubnsi
 
 def build_ovpn_nsi(self, args):
     """Generate an NSI file for installing an OpenVPN configuration. Can be 
     combined with the output of build_ca_nsi() for a single installer exe which 
     will install bother OpenVPN configuration and a certificate authority.
     """
-    ovpnnsi=r''
-    ovpnnsi+=r'!include LogicLib.nsh'+'\r\n'
-    ovpnnsi+=r'!include x64.nsh'+'\r\n'
-    ovpnnsi+=r'!include "NSISpcre.nsh"'+'\r\n'
-    ovpnnsi+=r''+'\r\n'
-    ovpnnsi+=r'!ifndef CONFIG_ZIP'+'\r\n'
-    ovpnnsi+=r'    !echo "You did not pass a /DCONFIG_ZIP=C:\path\to\asdf.zip argument to makensis.exe!"'+'\r\n'
-    ovpnnsi+=r'    !echo "We are assuming there is a file '+args.organization+'-vpn-config.zip in the CWD."'+'\r\n'
-    ovpnnsi+=r'    !define CONFIG_ZIP "'+args.organization+'-vpn-config.zip"'+'\r\n'
-    ovpnnsi+=r'!endif'+'\r\n'
-    ovpnnsi+=r''+'\r\n'
-    ovpnnsi+=r'!ifndef OUTPUT_EXE'+'\r\n'
-    ovpnnsi+=r'    !define OUTPUT_EXE "'+args.organization+'-OpenVPN-config.exe"'+'\r\n'
-    ovpnnsi+=r'!endif'+'\r\n'
-    ovpnnsi+=r''+'\r\n'
-    ovpnnsi+=r'Var /global OVPN_CONF_DIR'+'\r\n'
-    ovpnnsi+=r'Var /global OVPNGUI_PATH'+'\r\n'
-    ovpnnsi+=r'Var /global OVPN_DIR'+'\r\n'
-    ovpnnsi+=r'Var /global UNINSTALLER_PATH'+'\r\n'
-    ovpnnsi+=r'Var /global UNINSTALLER_KEY'+'\r\n'
-    ovpnnsi+=r''+'\r\n'
-    ovpnnsi+=r'!macro GetOvpnDir'+'\r\n'
-    ovpnnsi+=r'    ;StrCpy $OVPN_DIR "C:\Program Files\OpenVPN"'+'\r\n'
-    ovpnnsi+=r'    ;StrCpy $OVPN_CONF_DIR "$OVPN_DIR\config"'+'\r\n'
-    ovpnnsi+=r''+'\r\n'
-    ovpnnsi+=r'    ; If you do not do this, you will not see the 64 bit reg keys AGH.'+'\r\n'
-    ovpnnsi+=r'    ${If} ${RunningX64}'+'\r\n'
-    ovpnnsi+=r'        SetRegView 64'+'\r\n'
-    ovpnnsi+=r'    ${EndIf}'+'\r\n'
-    ovpnnsi+=r'    ClearErrors'+'\r\n'
-    ovpnnsi+=r'    ReadRegStr $OVPN_DIR HKLM "SOFTWARE\OpenVPN" ""'+'\r\n'
-    ovpnnsi+=r'    IfErrors 0 +3 ; iferrors, skip 0 lines, else, skip the next 2 lines (+3 means skip 2, cool right)'+'\r\n'
-    ovpnnsi+=r'        MessageBox MB_OK "Cannot find OpenVPN installed. You must install OpenVPN first! Exiting..."'+'\r\n'
-    ovpnnsi+=r'        Quit'+'\r\n'
-    ovpnnsi+=r'    ReadRegStr $OVPN_CONF_DIR HKLM "SOFTWARE\OpenVPN" "config_dir"'+'\r\n'
-    ovpnnsi+=r'    StrCpy $OVPNGUI_PATH "$OVPN_DIR\bin\openvpn-gui.exe"'+'\r\n'
-    ovpnnsi+=r'    StrCpy $UNINSTALLER_PATH "$OVPN_CONF_DIR\uninstall-'+args.organization+'-vpn-config.exe"'+'\r\n'
-    ovpnnsi+=r'    StrCpy $UNINSTALLER_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\OpenVPN-'+args.organization+'-Config"'+'\r\n'
-    ovpnnsi+=r'!macroend'+'\r\n'
-    ovpnnsi+=r''+'\r\n'
-    ovpnnsi+=r'Name "'+args.organization+' OpenVPN configuration installer"'+'\r\n'
-    ovpnnsi+=r'Outfile "${OUTPUT_EXE}"'+'\r\n'
-    ovpnnsi+=r'RequestExecutionLevel admin'+'\r\n'
-    ovpnnsi+=r'ShowInstDetails show'+'\r\n'
-    ovpnnsi+=r''+'\r\n'
-    ovpnnsi+=r'Page components'+'\r\n'
-    ovpnnsi+=r'Page instfiles'+'\r\n'
-    ovpnnsi+=r''+'\r\n'
-    ovpnnsi+=r'UninstPage instfiles'+'\r\n'
-    ovpnnsi+=r''+'\r\n'
-    ovpnnsi+=r'Section "'+args.organization+' OpenVPN user configuration"'+'\r\n'
-    ovpnnsi+=r''+'\r\n'
-    ovpnnsi+=r'    SetDetailsView show'+'\r\n'
-    ovpnnsi+=r'    !insertmacro GetOvpnDir'+'\r\n'
-    ovpnnsi+=r''+'\r\n'
-    ovpnnsi+=r'    Setoutpath "$OVPN_CONF_DIR"'+'\r\n'
-    ovpnnsi+=r'    File "/oname='+args.organization+'-vpn-config.zip" "${CONFIG_ZIP}"'+'\r\n'
-    ovpnnsi+=r'    nsUnzip::Extract /u "$OVPN_CONF_DIR\\'+args.organization+'-vpn-config.zip" /d="$OVPN_CONF_DIR" /END'+'\r\n'
-    ovpnnsi+=r''+'\r\n'
-    ovpnnsi+=r'    ; create uninstall info'+'\r\n'
-    ovpnnsi+=r'    WriteRegStr   HKLM $UNINSTALLER_KEY "DisplayName" "OpenVPN - '+args.organization+' Configuration"'+'\r\n'
-    ovpnnsi+=r'    WriteRegStr   HKLM $UNINSTALLER_KEY "UninstallString" "$UNINSTALLER_PATH"'+'\r\n'
-    ovpnnsi+=r'    WriteRegStr   HKLM $UNINSTALLER_KEY "Publisher" "'+args.organization+'"'+'\r\n'
-    ovpnnsi+=r'    WriteRegStr   HKLM $UNINSTALLER_KEY "NoModify" 0x1'+'\r\n'
-    ovpnnsi+=r'    WriteRegDWORD HKLM $UNINSTALLER_KEY "NoRepair" 0x1'+'\r\n'
-    ovpnnsi+=r'    WriteUninstaller "$UNINSTALLER_PATH"'+'\r\n'
-    ovpnnsi+=r'SectionEnd'+'\r\n'
-    ovpnnsi+=r''+'\r\n'
-    ovpnnsi+=r'Section "Force OpenVPN to run as admin"'+'\r\n'
-    ovpnnsi+=r'    SetDetailsView show'+'\r\n'
-    ovpnnsi+=r'    !insertmacro GetOvpnDir'+'\r\n'
-    ovpnnsi+=r'    WriteRegStr HKLM "SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$OVPNGUI_PATH" "RUNASADMIN"'+'\r\n'
-    ovpnnsi+=r'    WriteRegStr HKCU "SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$OVPNGUI_PATH" "RUNASADMIN"'+'\r\n'
-    ovpnnsi+=r'SectionEnd'+'\r\n'
-    ovpnnsi+=r''+'\r\n'
-    ovpnnsi+=r'Section "Uninstall"'+'\r\n'
-    ovpnnsi+=r'    SetDetailsView show'+'\r\n'
-    ovpnnsi+=r'    !insertmacro GetOvpnDir'+'\r\n'
-    ovpnnsi+=r'    DeleteRegValue HKLM "SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$OVPNGUI_PATH"'+'\r\n'
-    ovpnnsi+=r'    DeleteRegValue HKCU "SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$OVPNGUI_PATH"'+'\r\n'
-    ovpnnsi+=r'    DeleteRegKey HKLM $UNINSTALLER_KEY'+'\r\n'
-    ovpnnsi+=r'    Delete /REBOOTOK "$OVPN_CONF_DIR\\'+args.organization+'.ovpn"'+'\r\n'
-    ovpnnsi+=r'    Delete /REBOOTOK "$OVPN_CONF_DIR\\'+args.organization+'-*"'+'\r\n'
-    ovpnnsi+=r'    Delete /REBOOTOK "$UNINSTALLER_PATH"'+'\r\n'
-    ovpnnsi+=r'SectionEnd'+'\r\n'
+    t = template_from_file('ovpn.nsi.template')
+    ovpnnsi = t.substitute(organization = config['organization'])
     return ovpnnsi
 
 

@@ -1,0 +1,7 @@
+!ifndef OUTPUT_EXE
+    !define OUTPUT_EXE "$organization-CA.exe"
+!endif
+Name "$organization certificate authority installer"
+Outfile "$${OUTPUT_EXE}"
+RequestExecutionLevel admin
+ShowInstDetails nevershow

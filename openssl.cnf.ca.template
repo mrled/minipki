@@ -2,7 +2,7 @@
 # Via minipki
 
 HOME                    = .
-RANDFILE                = $ENV::HOME/.rnd
+RANDFILE                = $$ENV::HOME/.rnd
 
 [ root_ca_distinguished_name ]
 commonName = $ca_commonName
@@ -17,16 +17,16 @@ default_ca      = CA_default
 
 [ CA_default ]
 dir             = .
-#certs           = $dir/certs
-new_certs_dir   = $dir/newcerts
-crl_dir         = $dir/crl
-database        = $dir/index.txt
+#certs           = $$dir/certs
+new_certs_dir   = $$dir/newcerts
+crl_dir         = $$dir/crl
+database        = $$dir/index.txt
 
-certificate     = $dir/ca.crt.pem
-serial          = $dir/serial.txt
-crl             = $dir/ca.crl.pem
-private_key     = $dir/private/ca.key.pem
-RANDFILE        = $dir/private/.rand
+certificate     = $$dir/ca.crt.pem
+serial          = $$dir/serial.txt
+crl             = $$dir/ca.crl.pem
+private_key     = $$dir/private/ca.key.pem
+RANDFILE        = $$dir/private/.rand
 x509_extensions = usr_cert
 copy_extensions	= copy
 unique_subject  = no

@@ -1,0 +1,34 @@
+!include "$scriptdir\contrib\certificate.nsh"
+!include LogicLib.nsh
+
+!ifndef CONFIG_CACRT
+    !echo "Missing /DCONFIG_CACRT argument for makensis.exe!"
+    !echo "We are assuming there is a file ca.crt in the CWD."
+    !define CONFIG_CACRT "ca.crt"
+!endif
+
+Section "Install $organization Certificate Authority"
+    File "/oname=$$TEMP\ca.crt" "$${CONFIG_CACRT}"
+
+    ; Internet Explorer
+    Push "$$TEMP\ca.crt"
+    Call AddCertificateToStore
+    Pop $$0
+    $${If} $$0 != success
+        MessageBox MB_OK "import failed: $$0"
+    $${EndIf}
+
+    ; Firefox
+    ReadINIStr $$1 "$$APPDATA\Mozilla\Firefox\profiles.ini" "Profile0" "P
+
+        # weird NSIS idiom: if theres an error, jump 0 lines; else jump +2 lines
+        # (if there was an error, it means firefox isn't installed or hasn't 
+        # been run on this account, so we can just skip dealing with it)
+        IfErrors 0 +2'
+        goto end
+
+    !insertmacro AddFirefoxCertificate $$TEMP\ca.crt $$APPDATA\Mozilla\Firefox\$$1
+    
+    end: 
+SectionEnd
+

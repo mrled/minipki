@@ -22,4 +22,17 @@ server_valid_days = 7300
 #makensisexe = C:\Program Files (x86)\NSIS\makensis.exe
 #opensslexe = C:\Program Files\OpenVPN\bin\openssl.exe
 
+# This will appear in Add/Remove Programs if you generate OpenVPN confg 
+# installers, and also on your CA and server certs
+orgname = "minipki"
+
+# Recommended at least if you are going to put these on the public Internet
+orgemail = ""
+
+
+# These are required
+vpnserver = example.com
+vpnport = 1194 # this is the default
+vpnprotocol = udp
+
 debug = no
