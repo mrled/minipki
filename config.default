@@ -37,9 +37,15 @@ orgemail = minipki@example.com
 country = XX
 
 
-# These are required
-vpnserver = example.com
+# These are required for VPN configuration information
+vpnserver = vpnserver.example.com
 vpnport = 1194 # this is the default
 vpnprotocol = udp
+
+# If you are building an installer for VPN client config and want to that 
+# installer to also install the normal CA to the system store, put a path to 
+# that file here
+pki_ca_with_vpn_config_installer = no
+
 
 debug = no

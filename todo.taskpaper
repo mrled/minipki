@@ -6,7 +6,7 @@
 - Do I really need a MINIPKI object/class ? @done
 - Implement a configuration file @done
 - Allow the config.local file to be in the user's homedir or in the cwd or in the scriptdir. 
-- Clean up / organize the command line arguments
+- Clean up / organize the command line arguments @done
 - In makecnf(), get optional fields like countryName from the config file too @done 
 - Clean up comments in makecnf() and make it shorter/more readable 
 - Parameterize remote IP addresses and subnets in ovpn.template
@@ -14,16 +14,30 @@
 - integrate newvpnkey.py from work
 - document what needs to be installed for NSIS to work. LogicLib is 3rd party - anything else?
 - clean up subjectAltName section @done
+- 'contrib' folder is misnamed; fix
+- Temp hack - put a config file param for including a PKI CA in your OVPN config installer
+- Add a license
 - Update the README
 - Make a Release on Github
 
 Fix the installer (maybe 1.1?):
 - NSIS under OS X
-- Generate viscosity configuration as well
 - consider replacing NSIS with maybe one of these: http://cyrille.rossant.net/create-a-standalone-windows-installer-for-your-python-application/
 - values of output_path and ovpn_nsi_path and probably others that contain spaces will break NSIS. Fix.
 
-Misc/wishlist:
+More clearly define difference between PKI and VPN roles (maybe 1.2?):
+- Have 'minipki vpn' and 'minipki pki' subcommands that have the familiar gen/sign/gensign/etc sub sub commands
+- Consider having two sections in the config file too
+- Differentiate in docs that PKI = for installation into system CA store and VPN = *just* for ovpn
+- Use pki_ca_dir / vpn_ca_dir rather than cwd
+- Make sure if there is only pki_ca_dir or vpn_ca_dir specified, the tool behaves sensibly (maybe user has only one of those)
+- Perhaps rename project to minica? Or something else. b/c 'minipki pki' looks silly. 
+
+Improve VPN support (maybe 1.3?):
+- Generate viscosity configuration as well
+- Generate vpn server configuration and setup 
+
+Misc/wishlist (...future):
 - makecnf() doesn't match ipv6 addresses
 - makecnf() validates IP addresses that are not dotted quads like "4". This is OK per networking, but I think that OpenSSL won't like this?
 - for the --purge argument, only delete files that I created. 
@@ -35,3 +49,4 @@ Misc/wishlist:
 - clarify the help for the --installer-with-ca option
 - having CA_CNF is not consistent; make it consistent in either direction
 - move documentation of openssl syntax from comments in initca() into its own document or something
+- Is my gut feeling true: that having one CA for both VPN and PKI is a bad idea ?

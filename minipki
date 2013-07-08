@@ -161,13 +161,16 @@ def makecnf(args):
     Write out an openssl.cnf file with the correct emailAddress field, 
     commonName field, and optional subjectAltName section
     """
-    logging.debug("arguments: %r" % args)
+    logging.debug("makecnf() arguments: %r" % args)
 
     t = template_from_file('openssl.cnf.server.template')
 
-    if args.commonName:
-        cn = args.commonName
-    else:
+    try:
+        if args.commonName:
+            cn = args.commonName
+        else:
+            cn = args.keyname
+    except AttributeError:
         cn = args.keyname
     logging.debug("cn is %r" % cn)
 
@@ -207,7 +210,7 @@ def makecnf(args):
     fcnf.close()
 
 def signcerts(args):
-    logging.debug("signcerts args: %r" % args)
+    logging.debug("signcerts() args: %r" % args)
     keyname = args.keyname
 
     proc = subprocess.Popen([opensslbin, 
@@ -222,7 +225,7 @@ def signcerts(args):
 
 
 def gensign(args):
-    logging.debug("gensign args: %r" % args)
+    logging.debug("gensign() args: %r" % args)
     genprivkey(args)
     signcerts(args)
 
@@ -516,10 +519,14 @@ def main(*args):
     s_initca.set_defaults(func=initca)
 
     parsed = argparser.parse_args()
+
     try:
-        parsed.func(parsed)
+        callme = parsed.func
     except AttributeError:
         print(argparser.format_help())
+        sys.exit()
+    parsed.func(parsed)
+
         
 
 if __name__ == '__main__':
