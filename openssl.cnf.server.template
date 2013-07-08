@@ -14,7 +14,7 @@ x509_extensions         = v3_req
 req_extensions          = v3_req
 
 [ req_distinguished_name ]
-countryName = US
+countryName = $countryName
 stateOrProvinceName = .
 localityName = .
 organizationName = .

@@ -1,11 +1,10 @@
-minipki todo:
-- NSIS under OS X
+1.0 release:
 - Make .ovpn generation work correctly and test it
 - Figure out revocation
-- Generate viscosity configuration as well
-- Update the README
-- PEP8 compliance lol ugh
-- Do I really need a MINIPKI object/class ? 
+- PEP8 compliance lol ugh @done
+- Do I really need a MINIPKI object/class ? @done
+- Implement a configuration file @done
+- Allow the config.local file to be in the user's homedir or in the cwd or in the scriptdir. 
 - Clean up / organize the command line arguments
 - In makecnf(), get optional fields like countryName from the config file too
 - Clean up comments in makecnf() and make it shorter/more readable
@@ -13,5 +12,23 @@ minipki todo:
 - Honestly go thru and make sure there's NOTHING specific to Neuric
 - integrate newvpnkey.py from work
 - document what needs to be installed for NSIS to work. LogicLib is 3rd party - anything else?
-- consider replacing NSIS with maybe one of these: http://cyrille.rossant.net/create-a-standalone-windows-installer-for-your-python-application/
+- clean up subjectAltName section @done
+- Update the README
+- Make a Release on Github
 
+Fix the installer (maybe 1.1?):
+- NSIS under OS X
+- Generate viscosity configuration as well
+- consider replacing NSIS with maybe one of these: http://cyrille.rossant.net/create-a-standalone-windows-installer-for-your-python-application/
+- values of output_path and ovpn_nsi_path and probably others that contain spaces will break NSIS. Fix.
+
+Misc/wishlist:
+- makecnf() doesn't match ipv6 addresses
+- makecnf() validates IP addresses that are not dotted quads like "4". This is OK per networking, but I think that OpenSSL won't like this?
+- for the --purge argument, only delete files that I created. 
+- Consider instructing users to create a separate branch in git for handling their certificate authorities? 
+- verify the path of args.also_cacert in argparser so it fails immediately if it's bad
+- initca should work on an empty directory only, not on the cwd
+- sanity check args.output_path particularly in build_ovpn_nsis_installer()
+- add a --installer option for gensign (it already exists for vpngensign)
+- clarify the help for the --installer-with-ca option

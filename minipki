@@ -18,13 +18,23 @@ import re
 import configparser
 from string import Template
 
-scriptdir = os.path.abspath(os.curdir)
+#scriptdir = os.path.abspath(os.curdir)
+scriptpath = os.path.realpath(__file__)
+scriptdir = os.path.dirname(scriptpath)
+
 defaultconfigpath = os.path.join(scriptdir, 'config.default')
 localconfigpath = os.path.join(scriptdir, 'config.local')
 allconfig = configparser.ConfigParser()
 allconfig.read([defaultconfigpath, localconfigpath])
 config = allconfig['minipki']
-#config['rooturl'] = 'http://' + config['url_addr'] + ':' + config['port']
+
+# Set up some configuration that is derivable from what the user puts in
+config['emailAddressLine'] = ""
+if config['orgemail']:
+    config['emailAddressLine'] = "emailAddress = " + config['orgemail']
+
+
+CA_CNF = 'ca.openssl.cnf'
 
 def debugprint(text):
     if config.getboolean('debug'):
@@ -40,8 +50,8 @@ else:
 def is_exe(fpath):
     return os.path.exists(fpath) and os.access(fpath, os.X_OK)
 
-def template_from_file(fpath):
-    rf = open(os.path.abspath(fpath, 'r'))
+def template_from_file(fname):
+    rf = open(os.path.join(scriptdir, fname), 'r')
     data = rf.read()
     rf.close()
     return Template(data)
@@ -59,7 +69,7 @@ def which(program):
     return None
 
 
-def initca(self, args):
+def initca(args):
     if args.purge:
         for p in os.listdir("."): 
             if os.path.isfile(p) or os.path.islink(p): 
@@ -70,11 +80,10 @@ def initca(self, args):
         for p in ["serial.txt", "index.txt", "private", "newcerts", 
                   "certified-keys", CA_CNF]:
             if (os.path.exists(p)):
-                print("Path '" + p + "' exists, exiting...")
-                sys.exit(fcnf)
+                raise Exception("Path '{}' exists, exiting...".format(p))
 
-    1=open(CA_CNF,'w')
-    fcnf.write(build_ca_cnf(self,args))
+    fcnf=open(CA_CNF,'w')
+    fcnf.write(build_ca_cnf(args))
     fcnf.close()
 
     fserial=open("serial.txt","w")
@@ -96,34 +105,34 @@ def initca(self, args):
                              # put out a self-signed cert instead of a csr; 
                              # required for a CA
                              "-x509", 
-                             "-days", str(CA_VALID_DAYS),
+                             "-days", config['ca_valid_days'],
 
                              #will output to stdout otherwise
                              "-out", "ca.crt.pem", 
 
                              #create an RSA key store it where cnf says
-                             "-newkey", "rsa:"+str(keysize)], 
+                             "-newkey", "rsa:"+config['keysize']], 
                             env={"OPENSSL_CONF": CA_CNF})
     proc.wait()
 
-def genprivkey(self, args):
+def genprivkey(args):
     keyname=args.keyname
     logging.debug("genprivkey args: %r" % args)
     if args.cnf: 
         if not (os.path.exists(args.cnf)):
-            print("Server configuration file specified on command line as",
-                  "{}, but file does not exist. Exiting...".format(args.cnf))
-            sys.exit(1)
+            raise Exception("Server configuration file specified on command ",
+                            "line as {}, but file does ".format(args.cnf),
+                            "not exist.")
         servercnf=args.cnf
     else:
         servercnf="certified-keys/"+keyname+".openssl.cnf"
         if not (os.path.exists(servercnf)):
-            logging.debug("genprivkey: openssl configuration file not present,",
+            logging.debug("genprivkey: openssl configuration file not present, " +
                           "generating...")
-            makecnf(self,args)
+            makecnf(args)
 
     proc = subprocess.Popen([opensslbin, "genrsa", "-out", 
-                             "certified-keys/"+keyname+".key", str(keysize)],
+                             "certified-keys/"+keyname+".key", config['keysize']],
                             env={"OPENSSL_CONF": servercnf})
     proc.wait()
 
@@ -137,113 +146,67 @@ def genprivkey(self, args):
                             env={"OPENSSL_CONF": servercnf})
     proc.wait()
 
-def build_ca_cnf(self, args):
+def build_ca_cnf(args):
     t = template_from_file('openssl.cnf.ca.template')
 
-    emailAddressLine = countryNameLine = stateOrProvinceLine = ""
-    localityNameLine = organizationNameLine = ""
-    if args.emailAddress:
-        emailAddressLine = "emailAddress = " + args.emailAddress
-    if args.countryName:
-        countryNameLine = "countryName = " + args.countryName
-    if args.stateOrProvince:
-        stateOrProvinceLine = "stateOrProvince = " + args.stateOrProvince
-    if args.localityName:
-        localityNameLine = "localityName = " + args.localityName
-    if args.organizationName: 
-        organizationNameLine = "organizationName = " + args.organizationName
-
-    cacnf = t.substitute(ca_commonName = args.ca_commonName,
-                         emailAddressLine = emailAddressLine,
-                         countryNameLine = countryNameLine,
-                         stateOrProvinceLine = stateOrProvinceLine,
-                         localityNameLine = localityNameLine,
-                         organizationNameLine = organizationNameLine,
+    cacnf = t.substitute(ca_commonName = config['ca_common_name'],
+                         emailAddressLine = config['emailAddressLine'],
+                         organizationName = config['orgname'],
+                         countryName = config['country'],
                          default_keysize = config['keysize'])
     return cacnf
 
-def makecnf(self, args):
+def makecnf(args):
     """
     Write out an openssl.cnf file with the correct emailAddress field, 
     commonName field, and optional subjectAltName section
     """
     logging.debug("arguments: %r" % args)
 
-    t = template_from_file('openssl.cnf.ca.template')
+    t = template_from_file('openssl.cnf.server.template')
 
-    try:
-        cn = str(args.commonName)
-    except:
+    if args.commonName:
+        cn = args.commonName
+    else:
         cn = args.keyname
     logging.debug("cn is %r" % cn)
 
-
     try:
-        san = args.subjectAltName
-        # we need a separate list of ip addresses vs DNS names
+        san = set(args.subjectAltName.split(",") + [cn])
+
         subjectAltNameLines = "subjectAltName = @alt_names" + "\n\n" 
         subjectAltNameLines+= "[ alt_names ]" + "\n"
-        ip=[] 
-        dns=[]
-        for entry in san.split(","):
+        ip = dns = [] 
+
+        for entry in san:
             # test if this is an IP address by asking the socket module
-            # NOTE: just because it's not a dotted quad doesn't mean it's not 
-            # valid! "4" is a valid IP address! 
-            # this is not ideal b/c openssl doesn't accept IPs that are not 
-            # dotted quads. <sigh>
-            # TODO: currently this doesn't match ipv6 addresses
-            # see also:
-            # <http://stackoverflow.com/questions/319279>
             try:
                 socket.inet_aton(entry)
                 ip.append(entry)
-            except:
+            except socket.error:
                 # assume it's a hostname if it fails the socket test
                 dns.append(entry)
 
-        # The commonName MUST also be in the subjectAltName list; 
-        # if it isn't specified there by the user, add it
-        try: 
-            socket.inet_aton(cn)
-            # looks like cn is an IP address. check for it in the ip list
-            for entry in ip:
-                if (entry == cn): 
-                    break
-            else:
-                ip.append(cn)
-        except:
-            # looks cn isn't an IP address, so assume it's a hostname. check for
-            # it in the dns list. 
-            for entry in dns:
-                if (entry == cn): 
-                    break
-            else:
-                dns.append(cn)
+        # note that OpenSSL needs it to start with DNS.1 not DNS.0
+        for i in range(0, len(dns)):
+            subjectAltNameLines += "DNS.{} = {}\n".format(i+1, dns[i])
+        for i in range(0, len(ip)):
+            subjectAltNameLines += "IP.{} = {}\n".format(i+1, ip[i])
 
-        seq=1
-        for entry in dns:
-            subjectAltNameLines += "DNS." + str(seq) + " = " + entry + '\n'
-            seq+=1
-        seq=1
-        for entry in ip:
-            subjectAltNameLines += "IP." + str(seq) + " = " + entry + '\n'
-            seq+=1
     except AttributeError: # there is no args.subjectAltName
         subjectAltNameLines = ""
-    except:
-        raise
 
     servercnf = t.substitute(keysize = config['keysize'],
                              commonName = cn,
-                             emailAddressLine = emailAddressLine,
+                             countryName = config['country'],
+                             emailAddressLine = config['emailAddressLine'],
                              subjectAltNameLines = subjectAltNameLines)
 
     fcnf=open("certified-keys/"+args.keyname+".openssl.cnf",'w')
     fcnf.write(servercnf)
     fcnf.close()
 
-
-def signcerts(self, args):
+def signcerts(args):
     logging.debug("signcerts args: %r" % args)
     keyname = args.keyname
 
@@ -253,17 +216,17 @@ def signcerts(self, args):
                              "-config", CA_CNF,
                              "-in",  "certified-keys/"+keyname+".csr", 
                              "-out", "certified-keys/"+keyname+".cert", 
-                             "-days", str(SERVER_VALID_DAYS)],
+                             "-days", config['server_valid_days']],
                             env={"OPENSSL_CONF": CA_CNF})
     proc.wait()
 
 
-def gensign(self, args):
+def gensign(args):
     logging.debug("gensign args: %r" % args)
-    genprivkey(self,args)
-    signcerts(self,args)
+    genprivkey(args)
+    signcerts(args)
 
-def make_ovpn_zip(self, args):
+def make_ovpn_zip(args):
     import zipfile
 
     # zip files list
@@ -274,14 +237,13 @@ def make_ovpn_zip(self, args):
 
     for p in zfl:
         if not (os.path.exists(zfl[p])):
-            print("Path '{}' does not exist but is required, did".format(p), 
-                  "you create the VPN CA and client private key and sign it?",
-                  "Exiting...")
-            sys.exit(1)
+            raise Exception("Path '{}' does not exist but is ".format(p), 
+                            "required, did you create the VPN CA and client ",
+                            "private key and sign it?")
 
-    zfl['ovpn'] = 'certified-keys/'+args.vpnserver+'.ovpn'
+    zfl['ovpn'] = 'certified-keys/{}.ovpn'.format(config['vpnserver'])
     fovpn=open(zfl['ovpn'],'w')
-    fovpn.write(build_ovpn_config(self,args))
+    fovpn.write(build_ovpn_config(args))
     fovpn.close()
 
     zovpn=zipfile.ZipFile('certified-keys/'+args.keyname+'.zip', 'w', 
@@ -294,17 +256,14 @@ def make_ovpn_zip(self, args):
     zovpn.close()
 
     if args.installer or args.also_cacert:
-        build_ovpn_nsis_installer(self, args)
+        build_ovpn_nsis_installer(args)
 
-def vpngensign(self, args):
+def vpngensign(args):
     import zipfile
-    gensign(self,args)
-    make_ovpn_zip(self,args)
+    gensign(args)
+    make_ovpn_zip(args)
 
-# TODO: do I need to pass around args all the time? can I save those to the 
-#       object and then just look them up directly? 
-
-def build_ovpn_config(self,args):
+def build_ovpn_config(args):
     t = template_from_file('client.ovpn.template')
     ovpn = t.substitute(keyname = args.keyname,
                              vpnserver = config['vpnserver'],
@@ -313,7 +272,7 @@ def build_ovpn_config(self,args):
 
     return ovpn
 
-def build_ca_nsi(self, args):
+def build_ca_nsi(args):
     """Build the CA part of an NSI file which makensis can use.
     The file will *not* stand on its own; it's meant to be able to be 
     incorporated in a larger NSIS installer. If you want to create an installer
@@ -324,7 +283,7 @@ def build_ca_nsi(self, args):
                          organization = config['organization'])
     return cansi
 
-def build_castub_nsi(self, args):
+def build_castub_nsi(args):
     """Generate an NSI file for just installing a CA to a user's trusted root 
     store. (Must be combined with the output of build_ca_nsi().)
     """
@@ -332,7 +291,7 @@ def build_castub_nsi(self, args):
     castubnsi = t.substitute(organization = config['organization'])
     return castubnsi
 
-def build_ovpn_nsi(self, args):
+def build_ovpn_nsi(args):
     """Generate an NSI file for installing an OpenVPN configuration. Can be 
     combined with the output of build_ca_nsi() for a single installer exe which 
     will install bother OpenVPN configuration and a certificate authority.
@@ -342,28 +301,20 @@ def build_ovpn_nsi(self, args):
     return ovpnnsi
 
 
-# TODO: sanity check args.output_path
-# maybe have funcs that check for existing path, valid path, writable path, etc?
-
-def build_ovpn_nsis_installer(self, args):
-    # TODO: normalize / sanity check this. NSIS is strict: must be backslashes!
+def build_ovpn_nsis_installer(args):
     os.makedirs(os.path.abspath(os.path.expanduser(args.output_path)), 
                 exist_ok=True)
-    output_exe = os.path.abspath(os.path.expanduser(
-        args.output_path+'/VPN-config-'+args.keyname+'.exe'))
+    output_exe = "{}/VPN-config-{}.exe".format(args.output_path, args.keyname)
+    output_exe = os.path.abspath(os.path.expanduser(output_exe))
+        
     config_zip = os.path.abspath(os.path.expanduser(
         'certified-keys/{}.zip'.format(args.keyname)))
 
-    # BLOCKINGTODO: handle values of ovpn_nsi_path with spaces etc. 
-    #    canNOT wrap them in double quotes - NSIS won't handle those. 
-    #       oh actually also things like output_exe are affected by this too
     if args.also_cacert:
         # this means that the user supplied the --installer-with-ca argument
         # we abspath() it, because makensis requires absolute paths.
         # this also ensures backslash path separators, b/c nsis can't handle 
         # forward slash.
-        # TODO: verify the path of args.also_cacert in argparser so it fails 
-        # immediately if it's bad
         also_cacert_path = os.path.abspath(os.path.expanduser(args.also_cacert))
         nsisargs=[makensisexe,
                   r'/DOUTPUT_EXE={}'.format(output_exe),
@@ -372,10 +323,10 @@ def build_ovpn_nsis_installer(self, args):
                   r'{}'.format(ovpn_nsi_path),
                   r'{}'.format(ca_nsi_path)]
         fcnf=open(ca_nsi_path,'w')
-        fcnf.write(build_ca_nsi(self, args))
+        fcnf.write(build_ca_nsi(args))
         fcnf.close()
         fcnf=open(ovpn_nsi_path,'w')
-        fcnf.write(build_ovpn_nsi(self, args))
+        fcnf.write(build_ovpn_nsi(args))
         fcnf.close()
     else:
         # the user did not supply the --installer-with-ca argument
@@ -385,15 +336,14 @@ def build_ovpn_nsis_installer(self, args):
                   r'/DCONFIG_ZIP={}'.format(config_zip),
                   r'{}'.format(ovpn_nsi_path)]
         fcnf=open(ovpn_nsi_path,'w')
-        fcnf.write(build_ovpn_nsi(self, args))
+        fcnf.write(build_ovpn_nsi(args))
         fcnf.close()
 
     logging.debug("Calling makensis.exe...")
     logging.debug(nsisargs)
     subprocess.check_call(nsisargs)
 
-# TODO: this isn't exposted in argparse so.
-def build_ca_nsis_installer(self, args):
+def build_ca_nsis_installer(args):
     output_exe = args.output_path + '/security-certificate.exe'
     output_exe = os.path.abspath(os.path.expanduser(output_exe))
                                     
@@ -406,16 +356,16 @@ def build_ca_nsis_installer(self, args):
               r'"{}"'.format(ca_nsi_path)]
 
     fcnf=open(ca_nsi_path,'w')
-    fcnf.write(build_ca_nsi(self, args))
+    fcnf.write(build_ca_nsi(args))
     fcnf.close()
     fcnf=open(castub_nsi_path,'w')
-    fcnf.write(build_castub_nsi(self, args))
+    fcnf.write(build_castub_nsi(args))
     fcnf.close()
 
     subprocess.check_call(nsisargs)
 
 
-def examinecsr(self, args):
+def examinecsr(args):
     possible_csrs =  [args.csrfile, args.csrfile+".csr", 
                       "certified-keys/"+args.csrfile, 
                       "certified-keys/"+args.csrfile+".csr"]
@@ -424,25 +374,22 @@ def examinecsr(self, args):
             csrfile=p
             break
     else:
-        print("No such CSR file '" + args.csrfile + "', exiting...")
-        sys.exit(1)
-    proc = subprocess.Popen([opensslbin, "req", "-in", csrfile, "-noout", 
-                             "-text"],
-                            env={"OPENSSL_CONF": CA_CNF})
+        raise Exception("No such CSR file '{}', exiting...".format(args.csrfile))
+    
+    command = [opensslbin, "req", "-in", csrfile, "-noout", "-text"]
+    environment = {"OPENSSL_CONF": CA_CNF}
+    proc = subprocess.Popen(command, env=environment)
     proc.wait()
 
-def dmisc(self, args):
+def dmisc(args):
     if args.action == 'pwd':
         print(os.getcwd())
     elif args.action == 'scriptdir':
         print(scriptdir)
     else:
-        print("Action "+args.action+" not defined.")
-
+        print("Action {} not defined.".format(args.action))
 
 def main(*args):
-    global minipki
-    minipki=MINIPKI()
     global opensslbin
     if (os.name == 'nt'):
         inpath=which("openssl.exe")
@@ -469,8 +416,7 @@ def main(*args):
         if (inpath):
             opensslbin=inpath
         else:
-            print("Can't find OpenSSL binary. Exiting...")
-            sys.exit(1)
+            raise Exception("Can't find OpenSSL binary. Exiting...")
 
     h= 'Perform basic tasks for a mini-PKI'
     argparser = argparse.ArgumentParser(description=h)
@@ -488,9 +434,10 @@ def main(*args):
     subparser_makecnf.add_argument('--commonName', action='store', help=h)
 
 
-    h = 'A list of subjectAltName entries, separated by commas, such as '
-    h+= 'myserver,myserver.domain.tld,10.10.10.10 .'
-    subparser_makecnf.add_argument('--subjectAltName',   action='store', help=h)
+    san_help = 'A list of subjectAltName entries, separated by commas, such as '
+    san_help+= 'myserver,myserver.domain.tld,10.10.10.10 .'
+    subparser_makecnf.add_argument('--subjectAltName',   action='store', 
+                                   help=san_help)
 
     subparser_makecnf.set_defaults(func=makecnf)
 
@@ -500,7 +447,7 @@ def main(*args):
                                       help='Supply the path to a .csr file')
     subparser_examinecsr.set_defaults(func=examinecsr)
 
-    h='Generate a private key & CSR for a server')
+    h='Generate a private key & CSR for a server'
     subparser_genkey = subparsers.add_parser('genkey', help=h)
 
 
@@ -512,12 +459,11 @@ def main(*args):
     subparser_genkey.add_argument('keyname', type=str, action='store', help=h)
 
     h='Specify a hostname rather than use the keyname to use in the config '
-    h+='file'.
+    h+='file'
     subparser_genkey.add_argument('--commonName', action='store', help=h)
 
-    h ='A list of subjectAltName entries, separated by commas, such as '
-    h+='myserver,myserver.domain.tld,10.10.10.10 .'
-    subparser_genkey.add_argument('--subjectAltName',   action='store', help=h)
+    subparser_genkey.add_argument('--subjectAltName',   action='store', 
+                                  help=san_help)
 
     h ='An existing openssl.cnf file. Useful if all of your server certs can '
     h+='use the same file because the commonName is optional '
@@ -548,9 +494,8 @@ def main(*args):
     h+='file.'
     subparser_gensign.add_argument('--commonName', action='store', help=h)
 
-    h='A list of subjectAltName entries, separated by commas, such as '
-    h+='myserver,myserver.domain.tld,10.10.10.10 .'
-    subparser_gensign.add_argument('--subjectAltName',   action='store', help=h)
+    subparser_gensign.add_argument('--subjectAltName',   action='store', 
+                                   help=san_help)
 
     h='An existing openssl.cnf file. Useful if all of your server certs can '
     h+='use the same file because the commonName is optional '
@@ -559,42 +504,6 @@ def main(*args):
 
     subparser_gensign.set_defaults(func=gensign)
 
-    h='Initialize a Certificate Authority in this directory'
-    subparser_initca = subparsers.add_parser('initca', help=h)
-
-    h='REQUIRED. Provide a commonName for your new CA.'
-    subparser_initca.add_argument('--ca_commonName', '--commonName', 
-                                  dest='ca_commonName',
-                                  action='store', required=True, 
-                                  help=h)
-
-    h='Recommended. Provide an organization name to be included on the CA '
-    h+='certificate and any subsequent server certificates.'
-    subparser_initca.add_argument('--organizationName', action='store', help=h)
-
-    h='Recommended. Provide an email address to be included on the CA '
-    h+='certificate and any subsequent server certificates.'
-    subparser_initca.add_argument('--emailAddress', action='store', help=h)
-
-    h='Provide a country name to be included on the CA certificate and any '
-    h+='subsequent server certificates.'
-    subparser_initca.add_argument('--countryName', action='store', help=h)
-
-    h='Provide a state or province name to be included on the CA certificate '
-    h+='and any subsequent server certificates.'
-    subparser_initca.add_argument('--stateOrProvinceName', action='store', 
-                                  help=h)
-
-    h='Provide a locality name to be included on the CA certificate and any '
-    h+='subsequent server certificates.'
-    subparser_initca.add_argument('--localityName', action='store', help=h)
-
-    h='THIS OPTION WILL DELETE ALL FILES IN THE CURRENT DIRECTORY. '
-    h+='It is really intended just for debugging.'
-    subparser_initca.add_argument('--purge', action='store_true', help=h)
-
-    subparser_initca.set_defaults(func=initca)
-
     h='Create a vpn configuration from an existing signed private key, and zip '
     h+='them all up.'
     subparser_vpnconfig = subparsers.add_parser('vpnconfig', help=h)
@@ -602,15 +511,6 @@ def main(*args):
     h='Supply a keyname, such as jsmith. The filenames for the cert, CSR, etc '
     h+='are based on this name.'
     subparser_vpnconfig.add_argument('keyname', type=str, action='store', 
-                                     help=h)
-
-    h='Supply a hostname for the VPN server. Required.'
-    subparser_vpnconfig.add_argument('--vpnserver', action='store', 
-                                     required=True, help=h)
-
-    h='Supply a port for the VPN server. Default is 1194.'
-    subparser_vpnconfig.add_argument('--vpnport', action='store', type=int, 
-                                     default=1194, 
                                      help=h)
 
     h='Build an installer .exe for the OpenVPN configuration after generating '
@@ -636,12 +536,6 @@ def main(*args):
                                      dest='output_path', 
                                      default='~/', help=h)
 
-    # TODO: this is really not the ideal way to handle this
-    h='Specify the organization name, used for the installer in things like the '
-    h+='add/remove programs dialog, etc. REQUIRED.'
-    subparser_vpnconfig.add_argument('--organization', type=str, required=True, 
-                                     help=h)
-
 
 
     h='Generate a VPN private key, sign it, create a VPN configuration from it, '
@@ -653,22 +547,12 @@ def main(*args):
     subparser_vpngensign.add_argument('keyname', type=str, action='store', 
                                       help=h)
 
-    h='Supply a hostname for the VPN server. Required.'
-    subparser_vpngensign.add_argument('--vpnserver', action='store', 
-                                      required=True, 
-                                      help=h)
 
-    h='Supply a port for the VPN server. Default is 1194.'
-    subparser_vpngensign.add_argument('--vpnport', action='store', type=int, 
-                                      default=1194, help=h)
-
-    # TODO: add this argument for the non-vpn gensign subcommand
     h='Build an installer .exe for the OpenVPN configuration after generating '
     h+='it. See the readme file for more information on this option. ' 
     subparser_vpngensign.add_argument('--installer', action='store_true', 
                                       help=h)
 
-    # TODO: not sure this help is really clear. 
     h='(Implies --installer.) '
     h+='Build an installer that includes BOTH the OpenVPN configuration AND a '
     h+='root CA that is installed to a user\'s trusted CAs. '
@@ -691,12 +575,6 @@ def main(*args):
     subparser_vpngensign.add_argument('--installer-output', type=str, 
                                       dest='output_path', default='~/', help=h)
 
-    # TODO: this is really not the ideal way to handle this
-    h='Specify the organization name, used for the installer in things like '
-    h+='the add/remove programs dialog, etc. REQUIRED.'
-    subparser_vpngensign.add_argument('--organization', type=str, 
-                                      required=True, help=h)
-
     h='An existing openssl.cnf file. Useful if all of your certs can use the '
     h+='same file because the commonName is optional (as is the case with my '
     h+='OpenVPN setup).'
@@ -704,15 +582,28 @@ def main(*args):
 
     subparser_vpngensign.set_defaults(func=vpngensign)
 
+    h='Initialize a Certificate Authority in this directory'
+    subparser_initca = subparsers.add_parser('initca', help=h)
+
     # This is just for developing shit
-    if MINIPKI_DEBUG:
+    if config.getboolean('debug'):
         subparser_debug = subparsers.add_parser('debug', 
                                                 help='Debugging options...')
         subparser_debug.add_argument('action', type=str, action='store')
         subparser_debug.set_defaults(func=dmisc)
 
+        h='THIS OPTION WILL DELETE ALL FILES IN THE CURRENT DIRECTORY. '
+        h+='It is really intended just for debugging.'
+        subparser_initca.add_argument('--purge', action='store_true', help=h)
+
+    subparser_initca.set_defaults(func=initca)
+
     parsed = argparser.parse_args()
-    parsed.func(parsed)
+    try:
+        parsed.func(parsed)
+    except AttributeError:
+        print(argparser.format_help())
+        
 
 if __name__ == '__main__':
     sys.exit(main(*sys.argv))

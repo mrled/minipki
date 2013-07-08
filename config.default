@@ -22,12 +22,19 @@ server_valid_days = 7300
 #makensisexe = C:\Program Files (x86)\NSIS\makensis.exe
 #opensslexe = C:\Program Files\OpenVPN\bin\openssl.exe
 
+# Highly recommended that you customize this
+ca_common_name = minipki certificate authority
+
 # This will appear in Add/Remove Programs if you generate OpenVPN confg 
 # installers, and also on your CA and server certs
-orgname = "minipki"
+orgname = minipki
 
 # Recommended at least if you are going to put these on the public Internet
-orgemail = ""
+orgemail = minipki@example.com
+
+# You should set this because OpenSSL throws a fit if it doesn't exist:
+# (Must be 2 characters exactly or something.)
+country = XX
 
 
 # These are required

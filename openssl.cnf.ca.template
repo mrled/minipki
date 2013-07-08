@@ -7,17 +7,14 @@ RANDFILE                = $$ENV::HOME/.rnd
 [ root_ca_distinguished_name ]
 commonName = $ca_commonName
 $emailAddressLine
-$countryNameLine
-$stateOrProvinceNameLine
-$localityNameLine
-$organizationNameLine
+countryName = $countryName
+organizationName = $organizationName
 
 [ ca ]
 default_ca      = CA_default
 
 [ CA_default ]
 dir             = .
-#certs           = $$dir/certs
 new_certs_dir   = $$dir/newcerts
 crl_dir         = $$dir/crl
 database        = $$dir/index.txt
