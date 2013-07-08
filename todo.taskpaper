@@ -1,13 +1,14 @@
 1.0 release:
 - Make .ovpn generation work correctly and test it
 - Figure out revocation
+- Implement argparse parents @done
 - PEP8 compliance lol ugh @done
 - Do I really need a MINIPKI object/class ? @done
 - Implement a configuration file @done
 - Allow the config.local file to be in the user's homedir or in the cwd or in the scriptdir. 
 - Clean up / organize the command line arguments
-- In makecnf(), get optional fields like countryName from the config file too
-- Clean up comments in makecnf() and make it shorter/more readable
+- In makecnf(), get optional fields like countryName from the config file too @done 
+- Clean up comments in makecnf() and make it shorter/more readable 
 - Parameterize remote IP addresses and subnets in ovpn.template
 - Honestly go thru and make sure there's NOTHING specific to Neuric
 - integrate newvpnkey.py from work
@@ -32,3 +33,5 @@ Misc/wishlist:
 - sanity check args.output_path particularly in build_ovpn_nsis_installer()
 - add a --installer option for gensign (it already exists for vpngensign)
 - clarify the help for the --installer-with-ca option
+- having CA_CNF is not consistent; make it consistent in either direction
+- move documentation of openssl syntax from comments in initca() into its own document or something

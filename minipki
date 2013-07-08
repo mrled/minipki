@@ -17,6 +17,8 @@ import socket
 import re
 import configparser
 from string import Template
+import zipfile
+
 
 #scriptdir = os.path.abspath(os.curdir)
 scriptpath = os.path.realpath(__file__)
@@ -28,17 +30,15 @@ allconfig = configparser.ConfigParser()
 allconfig.read([defaultconfigpath, localconfigpath])
 config = allconfig['minipki']
 
+output_path = os.path.expanduser("~")
+
 # Set up some configuration that is derivable from what the user puts in
-config['emailAddressLine'] = ""
 if config['orgemail']:
     config['emailAddressLine'] = "emailAddress = " + config['orgemail']
-
+else:
+    config['emailAddressLine'] = ""
 
 CA_CNF = 'ca.openssl.cnf'
-
-def debugprint(text):
-    if config.getboolean('debug'):
-        print("DEBUG: " + text)
 
 if config.getboolean('debug'):
     from pdb import set_trace as strace
@@ -227,7 +227,6 @@ def gensign(args):
     signcerts(args)
 
 def make_ovpn_zip(args):
-    import zipfile
 
     # zip files list
     zfl = {'cacrt':'ca.crt.pem', 
@@ -259,7 +258,6 @@ def make_ovpn_zip(args):
         build_ovpn_nsis_installer(args)
 
 def vpngensign(args):
-    import zipfile
     gensign(args)
     make_ovpn_zip(args)
 
@@ -302,10 +300,8 @@ def build_ovpn_nsi(args):
 
 
 def build_ovpn_nsis_installer(args):
-    os.makedirs(os.path.abspath(os.path.expanduser(args.output_path)), 
-                exist_ok=True)
-    output_exe = "{}/VPN-config-{}.exe".format(args.output_path, args.keyname)
-    output_exe = os.path.abspath(os.path.expanduser(output_exe))
+    output_exe = os.path.join(output_path, 
+                              "VPN-config-{}.exe".format(args.keyname))
         
     config_zip = os.path.abspath(os.path.expanduser(
         'certified-keys/{}.zip'.format(args.keyname)))
@@ -344,8 +340,7 @@ def build_ovpn_nsis_installer(args):
     subprocess.check_call(nsisargs)
 
 def build_ca_nsis_installer(args):
-    output_exe = args.output_path + '/security-certificate.exe'
-    output_exe = os.path.abspath(os.path.expanduser(output_exe))
+    output_exe = os.path.join(output_path, 'security-certificate.exe')
                                     
     cacert_path = os.path.abspath(os.path.expanduser(args.cacert))
 
@@ -418,185 +413,107 @@ def main(*args):
         else:
             raise Exception("Can't find OpenSSL binary. Exiting...")
 
+    ### ARGUMENT PARSING
+
     h= 'Perform basic tasks for a mini-PKI'
     argparser = argparse.ArgumentParser(description=h)
     subparsers = argparser.add_subparsers()
-    
-    h="Generate an openssl.cnf file for a server"
-    subparser_makecnf = subparsers.add_parser('makecnf', help=h)
 
+    ### PARENT PARSERS, which collect related arguments together
+    p_keyname = argparse.ArgumentParser(add_help=False)
     h =  'Supply a keyname, such as myserver or myserver.sub.domain.tld. '
     h += 'By default, this also specifies a hostname'
-    subparser_makecnf.add_argument('keyname', type=str, action='store', help=h)
+    p_keyname.add_argument('keyname', type=str, action='store', help=h)
 
+    p_commonname = argparse.ArgumentParser(add_help=False)
     h = 'Specify a hostname rather than use the keyname to use in the config '
     h+= 'file.'
-    subparser_makecnf.add_argument('--commonName', action='store', help=h)
+    p_commonname.add_argument('--commonName', action='store', help=h)
 
+    p_san = argparse.ArgumentParser(add_help=False)
+    h = 'A list of subjectAltName entries, separated by commas, such as '
+    h+= 'myserver,myserver.domain.tld,10.10.10.10 .'
+    p_san.add_argument('--subjectAltName', action='store', help=h)
 
-    san_help = 'A list of subjectAltName entries, separated by commas, such as '
-    san_help+= 'myserver,myserver.domain.tld,10.10.10.10 .'
-    subparser_makecnf.add_argument('--subjectAltName',   action='store', 
-                                   help=san_help)
-
-    subparser_makecnf.set_defaults(func=makecnf)
-
-    subparser_examinecsr = subparsers.add_parser('examinecsr', 
-                                                 help="Examine an existing CSR")
-    subparser_examinecsr.add_argument('csrfile', action='store', 
-                                      help='Supply the path to a .csr file')
-    subparser_examinecsr.set_defaults(func=examinecsr)
-
-    h='Generate a private key & CSR for a server'
-    subparser_genkey = subparsers.add_parser('genkey', help=h)
-
-
-    h = 'Supply a keyname, such as myserver or myserver.sub.domain.tld. '
-    h+= 'The filenames for the cert, CSR, etc are based on this name. This '
-    h+= 'subcommand also looks for an openssl configuration file named '
-    h+= 'keyname.openssl.cnf; if it does not find one, it will generate '
-    h+= 'one for you.'
-    subparser_genkey.add_argument('keyname', type=str, action='store', help=h)
-
-    h='Specify a hostname rather than use the keyname to use in the config '
-    h+='file'
-    subparser_genkey.add_argument('--commonName', action='store', help=h)
-
-    subparser_genkey.add_argument('--subjectAltName',   action='store', 
-                                  help=san_help)
-
+    p_cnf = argparse.ArgumentParser(add_help=False)
     h ='An existing openssl.cnf file. Useful if all of your server certs can '
     h+='use the same file because the commonName is optional '
     h+='(as is the case with my OpenVPN setup).'
-    subparser_genkey.add_argument('--cnf', action='store', help=h)
+    p_cnf.add_argument('--cnf', action='store', help=h)
 
-    subparser_genkey.set_defaults(func=genprivkey)
-    
-    h='Sign a CSR with an existing CA key'
-    subparser_sign = subparsers.add_parser('sign', help=h)
-
-    h ='Supply a keyname, such as myserver or myserver.sub.domain.tld. '
-    h+='The filenames for the cert, CSR, etc are based on this name.'
-    subparser_sign.add_argument('keyname', type=str, action='store', help=h)
-    subparser_sign.set_defaults(func=signcerts)
-
-    h='Both generate and sign in one step'
-    subparser_gensign = subparsers.add_parser('gensign', help=h)
-
-    h ='Supply a keyname, such as myserver or myserver.sub.domain.tld. The '
-    h+='filenames for the cert, CSR, etc are based on this name. This '
-    h+='subcommand also looks for an openssl configuration file named '
-    h+='keyname.openssl.cnf; if it does not find one, it will generate one for '
-    h+='you.'
-    subparser_gensign.add_argument('keyname', type=str, action='store', help=h)
-
-    h='Specify a hostname rather than use the keyname to use in the config '
-    h+='file.'
-    subparser_gensign.add_argument('--commonName', action='store', help=h)
-
-    subparser_gensign.add_argument('--subjectAltName',   action='store', 
-                                   help=san_help)
-
-    h='An existing openssl.cnf file. Useful if all of your server certs can '
-    h+='use the same file because the commonName is optional '
-    h+='(as is the case with my OpenVPN setup).'
-    subparser_gensign.add_argument('--cnf', action='store', help=h)
-
-    subparser_gensign.set_defaults(func=gensign)
-
-    h='Create a vpn configuration from an existing signed private key, and zip '
-    h+='them all up.'
-    subparser_vpnconfig = subparsers.add_parser('vpnconfig', help=h)
-
-    h='Supply a keyname, such as jsmith. The filenames for the cert, CSR, etc '
-    h+='are based on this name.'
-    subparser_vpnconfig.add_argument('keyname', type=str, action='store', 
-                                     help=h)
-
+    p_ovpninst = argparse.ArgumentParser(add_help=False)
     h='Build an installer .exe for the OpenVPN configuration after generating '
     h+='it. See the readme file for more information on this option. ' 
-    subparser_vpnconfig.add_argument('--installer', action='store_true', help=h)
+    p_ovpninst.add_argument('--installer', action='store_true', help=h)
 
+    p_ovpnwcainst = argparse.ArgumentParser(add_help=False)
     h='(Implies --installer.) '
     h+='Build an installer that includes BOTH the OpenVPN configuration AND a '
     h+='root CA that is installed to a user\'s trusted CAs. '
     h+='By default assumes that your VPN CA is the same as the trusted root '
     h+='CA, but you can specify an optional "cafile" argument if '
     h+='you have a separate PKI for browser certs and VPN certs.'
-    subparser_vpnconfig.add_argument('--installer-with-ca', nargs='?', 
-                                     type=str, const='ca.crt.pem',
-                                     default=False, dest='also_cacert', 
-                                     metavar='CACRT', help=h)
+    p_ovpnwcainst.add_argument('--installer-with-ca', nargs='?', 
+                               type=str, const='ca.crt.pem',
+                               default=False, dest='also_cacert', 
+                               metavar='CACRT', help=h)
 
-    subparser_vpnconfig.set_defaults(func=make_ovpn_zip)
+    ### SUB PARSERS
+    
+    h="Generate an openssl.cnf file for a server"
+    s_makecnf = subparsers.add_parser('makecnf', help=h,
+                                      parents=[p_keyname, p_commonname, p_san])
+    s_makecnf.set_defaults(func=makecnf)
 
-    h='Specify the folder for the installer built by --installer or '
-    h+='--installer-with-ca. Default is your home directory.'
-    subparser_vpnconfig.add_argument('--installer-output', type=str, 
-                                     dest='output_path', 
-                                     default='~/', help=h)
+    s_examinecsr = subparsers.add_parser('examinecsr', 
+                                         help="Examine an existing CSR")
+    s_examinecsr.add_argument('csrfile', action='store', 
+                              help='Supply the path to a .csr file')
+    s_examinecsr.set_defaults(func=examinecsr)
 
+    h='Generate a private key & CSR for a server'
+    s_genkey = subparsers.add_parser('genkey', help=h,
+                                     parents=[p_keyname, p_commonname, 
+                                              p_san, p_cnf])
+    s_genkey.set_defaults(func=genprivkey)
+    
+    h='Sign a CSR with an existing CA key'
+    s_sign = subparsers.add_parser('sign', help=h, parents=[p_keyname])
 
+    h='Both generate and sign in one step'
+    s_gensign = subparsers.add_parser('gensign', help=h, 
+                                      parents=[p_keyname, p_commonname, 
+                                               p_san, p_cnf])
+    s_gensign.set_defaults(func=gensign)
+
+    h='Create a vpn configuration from an existing signed private key, and zip '
+    h+='them all up.'
+    s_vpnconfig = subparsers.add_parser('vpnconfig', help=h, 
+                                        parents=[p_keyname, p_ovpninst, 
+                                                 p_ovpnwcainst])
+    s_vpnconfig.set_defaults(func=make_ovpn_zip)
 
     h='Generate a VPN private key, sign it, create a VPN configuration from it, '
     h+='and zip them all up.'
-    subparser_vpngensign = subparsers.add_parser('vpngensign', help=h)
-
-    h='Supply a keyname, such as jsmith. The filenames for the cert, CSR, etc '
-    h+='are based on this name.'
-    subparser_vpngensign.add_argument('keyname', type=str, action='store', 
-                                      help=h)
-
-
-    h='Build an installer .exe for the OpenVPN configuration after generating '
-    h+='it. See the readme file for more information on this option. ' 
-    subparser_vpngensign.add_argument('--installer', action='store_true', 
-                                      help=h)
-
-    h='(Implies --installer.) '
-    h+='Build an installer that includes BOTH the OpenVPN configuration AND a '
-    h+='root CA that is installed to a user\'s trusted CAs. '
-    h+='By default assumes that your VPN CA is the same as the '
-    h+='trusted root CA, but you can specify an optional "cafile" argument if '
-    h+='you have a separate PKI for browser certs and VPN certs.'
-    # notes to self: nargs=? means if it's present with a positional argument 
-    # after, the posarg is used; if no posarg, const is used; if not present at
-    # all, default is used. the dest setting means that's how you access the 
-    # stored value, e.g. dest.cacrt will contain the posarg or ca.crt.pem or
-    # False depending on how the user chooses. metavar is simply what is 
-    # displayed when you run --help.
-    subparser_vpngensign.add_argument('--installer-with-ca', nargs='?', 
-                                      type=str, const='ca.crt.pem',
-                                      default=False, dest='also_cacert', 
-                                      metavar='CACRT', help=h)
-
-    h='Specify the folder for the installer built by --installer or '
-    h+='--installer-with-ca. Default is your home directory.'
-    subparser_vpngensign.add_argument('--installer-output', type=str, 
-                                      dest='output_path', default='~/', help=h)
-
-    h='An existing openssl.cnf file. Useful if all of your certs can use the '
-    h+='same file because the commonName is optional (as is the case with my '
-    h+='OpenVPN setup).'
-    subparser_vpngensign.add_argument('--cnf', action='store', help=h)
-
-    subparser_vpngensign.set_defaults(func=vpngensign)
+    s_vpngensign = subparsers.add_parser('vpngensign', help=h,
+                                         parents=[p_keyname, p_ovpninst, 
+                                                  p_ovpnwcainst, p_cnf])
+    s_vpngensign.set_defaults(func=vpngensign)
 
     h='Initialize a Certificate Authority in this directory'
-    subparser_initca = subparsers.add_parser('initca', help=h)
+    s_initca = subparsers.add_parser('initca', help=h)
 
-    # This is just for developing shit
     if config.getboolean('debug'):
-        subparser_debug = subparsers.add_parser('debug', 
+        s_debug = subparsers.add_parser('debug', 
                                                 help='Debugging options...')
-        subparser_debug.add_argument('action', type=str, action='store')
-        subparser_debug.set_defaults(func=dmisc)
+        s_debug.add_argument('action', type=str, action='store')
+        s_debug.set_defaults(func=dmisc)
 
         h='THIS OPTION WILL DELETE ALL FILES IN THE CURRENT DIRECTORY. '
         h+='It is really intended just for debugging.'
-        subparser_initca.add_argument('--purge', action='store_true', help=h)
+        s_initca.add_argument('--purge', action='store_true', help=h)
 
-    subparser_initca.set_defaults(func=initca)
+    s_initca.set_defaults(func=initca)
 
     parsed = argparser.parse_args()
     try:
