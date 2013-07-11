@@ -18,4 +18,4 @@ resolv-retry infinite
 nobind
 route-method exe
 route-delay 2
-route 192.168.55.0 255.255.255.0 192.168.59.1 3
+route $vpnremotesubnet $vpnnetmask $vpngateway

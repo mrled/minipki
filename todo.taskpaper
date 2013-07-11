@@ -1,5 +1,5 @@
 1.0 release:
-- Make .ovpn generation work correctly and test it
+- Make .ovpn generation work correctly and test it@done
 - Figure out revocation
 - Implement argparse parents @done
 - PEP8 compliance lol ugh @done
@@ -8,14 +8,15 @@
 - Allow the config.local file to be in the user's homedir or in the cwd or in the scriptdir. 
 - Clean up / organize the command line arguments @done
 - In makecnf(), get optional fields like countryName from the config file too @done 
-- Clean up comments in makecnf() and make it shorter/more readable 
-- Parameterize remote IP addresses and subnets in ovpn.template
-- Honestly go thru and make sure there's NOTHING specific to Neuric
-- integrate newvpnkey.py from work
+- Clean up comments in makecnf() and make it shorter/more readable @done
+- Parameterize remote IP addresses and subnets in ovpn.template@done
+- expose build_ca_nsis_installer()@done
+- fix build_ca_nsis_installer() (something is failingon line 20 of castub.nsi)
+- Honestly go thru and make sure there's NOTHING specific to Neuric@done
+- integrate newvpnkey.py from work@done
 - document what needs to be installed for NSIS to work. LogicLib is 3rd party - anything else?
 - clean up subjectAltName section @done
-- 'contrib' folder is misnamed; fix
-- Temp hack - put a config file param for including a PKI CA in your OVPN config installer
+- Temp hack - put a config file param for including a PKI CA in your OVPN config installer@done
 - Add a license
 - Update the README
 - Make a Release on Github
@@ -24,6 +25,7 @@ Fix the installer (maybe 1.1?):
 - NSIS under OS X
 - consider replacing NSIS with maybe one of these: http://cyrille.rossant.net/create-a-standalone-windows-installer-for-your-python-application/
 - values of output_path and ovpn_nsi_path and probably others that contain spaces will break NSIS. Fix.
+- try to guess the location of makensis.exe
 
 More clearly define difference between PKI and VPN roles (maybe 1.2?):
 - Have 'minipki vpn' and 'minipki pki' subcommands that have the familiar gen/sign/gensign/etc sub sub commands
@@ -50,3 +52,4 @@ Misc/wishlist (...future):
 - having CA_CNF is not consistent; make it consistent in either direction
 - move documentation of openssl syntax from comments in initca() into its own document or something
 - Is my gut feeling true: that having one CA for both VPN and PKI is a bad idea ?
+- Having the catools() function is inelegant and ugly, make this better.

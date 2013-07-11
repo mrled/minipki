@@ -17,10 +17,10 @@ keysize = 4096
 ca_valid_days = 7300
 server_valid_days = 7300
 
-# The script tries to find these automatically, but you can speciffy them if
-# you wish. 
-#makensisexe = C:\Program Files (x86)\NSIS\makensis.exe
-#opensslexe = C:\Program Files\OpenVPN\bin\openssl.exe
+# Required to build installers
+# Note that there are also some NSIS modules you must install separately.
+# (See the readme.)
+makensisexe = C:\Program Files (x86)\NSIS\makensis.exe
 
 # Highly recommended that you customize this
 ca_common_name = minipki certificate authority
@@ -39,13 +39,26 @@ country = XX
 
 # These are required for VPN configuration information
 vpnserver = vpnserver.example.com
-vpnport = 1194 # this is the default
+vpnport = 1194
 vpnprotocol = udp
+
+# the client subnet is the VPN subnet for all VPN clients
+vpnclientsubnet = 10.1.1.0
+
+# the remote subnet is the VPN subnet for the remote office
+vpnremotesubnet = 10.2.2.0
+
+# the vpn gateway is the machine that routes between the two subnets 
+# (probably the local address of your vpn server
+vpngateway = 10.2.2.1
 
 # If you are building an installer for VPN client config and want to that 
 # installer to also install the normal CA to the system store, put a path to 
 # that file here
-pki_ca_with_vpn_config_installer = no
+vpn_pkica = no
 
+# The location for things like zip files and installers that this script creates
+# Note that certified keys go into the certified-keys directory though.
+output_path = ~
 
 debug = no
