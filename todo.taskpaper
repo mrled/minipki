@@ -17,7 +17,7 @@
 - document what needs to be installed for NSIS to work. LogicLib is 3rd party - anything else?
 - clean up subjectAltName section @done
 - Temp hack - put a config file param for including a PKI CA in your OVPN config installer@done
-- Add a license
+- Add a license@done
 - Update the README
 - Make a Release on Github
 
