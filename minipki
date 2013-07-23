@@ -24,7 +24,15 @@ scriptpath = os.path.realpath(__file__)
 scriptdir = os.path.dirname(scriptpath)
 
 defaultconfigpath = os.path.join(scriptdir, 'config.default')
-localconfigpath = os.path.join(scriptdir, 'config.local')
+for cf in [ os.path.join(os.getcwd(), 'minipki.config'),
+            os.path.expanduser('~/.minipki.config'),
+            os.path.join(scriptdir, 'config.local'), ]:
+    if os.path.exists(cf):
+        localconfigpath = cf
+        break
+else:
+    raise Exception("Could not find local configuration file.")
+            
 allconfig = configparser.ConfigParser()
 allconfig.read([defaultconfigpath, localconfigpath])
 config = allconfig['minipki']
