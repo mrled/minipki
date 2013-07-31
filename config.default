@@ -56,6 +56,7 @@ vpngateway = 10.2.2.1
 # installer to also install the normal CA to the system store, put a path to 
 # that file here
 vpn_pkica = no
+vpn_pkica_path = 
 
 # The location for things like zip files and installers that this script creates
 # Note that certified keys go into the certified-keys directory though.
