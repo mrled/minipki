@@ -53,8 +53,8 @@ ca_nsi_path = abspath('{}/nsis/ca.nsi'.format(scriptdir))
 castub_nsi_path = abspath('{}/nsis/castub.nsi'.format(scriptdir))
 ovpn_nsi_path = abspath('{}/nsis/ovpn.nsi'.format(scriptdir))
 
-if config['vpn_pkica']:
-    config['vpn_pkica'] = abspath(config['vpn_pkica'])
+if config['vpn_pkica_path']:
+    config['vpn_pkica_path'] = abspath(config['vpn_pkica_path'])
 
 # Set up some configuration that is derivable from what the user puts in
 config['output_path'] = abspath(config['output_path'])
@@ -299,7 +299,7 @@ def build_ovpn_nsis_installer(pargs):
     if config.getboolean('vpn_pkica'):
         nsisargs=[config['makensisexe'],
                   r'/DOUTPUT_EXE={}'.format(pargs.ovpninstaller_path),
-                  r'/DCONFIG_CACRT={}'.format(config['vpn_pkica']),
+                  r'/DCONFIG_CACRT={}'.format(config['vpn_pkica_path']),
                   r'/DCONFIG_ZIP={}'.format(pargs.ovpnzipfile_path),
                   r'/DCONFIG_CAORG={}'.format(config['orgname']),
                   r'{}'.format(ovpn_nsi_path),
