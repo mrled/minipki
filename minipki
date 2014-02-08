@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- mode: python -*-
 
 # minipki
 # Author: Micah R Ledbetter
@@ -28,6 +27,7 @@ for cf in [ os.path.join(os.getcwd(), 'minipki.config'),
             os.path.expanduser('~/.minipki.config'),
             os.path.join(scriptdir, 'config.local'), ]:
     if os.path.exists(cf):
+        print('Using configuration file: {}'.format(cf))
         localconfigpath = cf
         break
 else:
@@ -63,6 +63,8 @@ if config['orgemail']:
 else:
     config['emailAddressLine'] = ""
 
+if config['dhbits']:
+    config['dhfilename'] = 'dh' + config['dhbits'] + '.pem'
 
 def is_exe(fpath):
     return os.path.exists(fpath) and os.access(fpath, os.X_OK)
@@ -85,11 +87,22 @@ def which(program):
                 return exe_file
     return None
 
+def invoke_openssl(*opensslargs, cnfpath):
+    invocation = [opensslbin] + list(opensslargs)
+    environment = {"OPENSSL_CONF": cnfpath}
+    proc = subprocess.Popen(invocation, env=environment)
+    proc.wait()
+
+    # There is no reason for this file to exist (right?)
+    if os.path.isfile('.rnd'):
+        os.unlink('.rnd')
 
 def initca(pargs):
     if pargs.purge:
         for p in os.listdir("."): 
-            if os.path.isfile(p) or os.path.islink(p): 
+            if p == "minipki.config":
+                pass
+            elif os.path.isfile(p) or os.path.islink(p): 
                 os.unlink(p)
             elif os.path.isdir(p):
                 shutil.rmtree(p)
@@ -111,35 +124,32 @@ def initca(pargs):
     os.mkdir("newcerts",0o700)
     os.mkdir("certified-keys",0o700)
 
-    proc = subprocess.Popen([opensslbin, 
-                             "req", #request a new key
-                             "-config", CA_CNF,
+    invoke_openssl("req", #request a new key
+        "-config", CA_CNF,
+        "-nodes",  # don't create an encrypted key
+        "-x509", # create self-signed cert instead of a csr
+        "-days", config['ca_valid_days'],
+        "-out", "ca.crt.pem", 
+        "-newkey", "rsa:"+config['keysize'], 
+        cnfpath=CA_CNF)
 
-                             # don't create an encrypted key (& don't prompt 
-                             # for enc password): 
-                             "-nodes",  
+def gendh(pargs):
+    invoke_openssl("dhparam", "-out", config['dhfilename'], 
+        config['dhbits'], cnfpath=CA_CNF)
 
-                             # put out a self-signed cert instead of a csr; 
-                             # required for a CA
-                             "-x509", 
-                             "-days", config['ca_valid_days'],
+def vpninitca(pargs):
+    initca(pargs)
+    gendh(pargs)
 
-                             #will output to stdout otherwise
-                             "-out", "ca.crt.pem", 
-
-                             #create an RSA key store it where cnf says
-                             "-newkey", "rsa:"+config['keysize']], 
-                            env={"OPENSSL_CONF": CA_CNF})
-    proc.wait()
 
 def genprivkey(pargs):
     keyname=pargs.keyname
     logging.debug("genprivkey pargs: %r" % pargs)
     if pargs.cnf: 
         if not (os.path.exists(pargs.cnf)):
-            raise Exception("Server configuration file specified on command ",
-                            "line as {}, but file does ".format(pargs.cnf),
-                            "not exist.")
+            e ="Server configuration file specified on command line as "
+            e+="'{}', but file does not exist".format(pargs.cnf),
+            raise Exception(e)
         servercnf=pargs.cnf
     else:
         servercnf="certified-keys/"+keyname+".openssl.cnf"
@@ -148,20 +158,12 @@ def genprivkey(pargs):
                           "generating...")
             makecnf(pargs)
 
-    proc = subprocess.Popen([opensslbin, "genrsa", "-out", 
-                             "certified-keys/"+keyname+".key", config['keysize']],
-                            env={"OPENSSL_CONF": servercnf})
-    proc.wait()
-
-    proc = subprocess.Popen([opensslbin, 
-                             "req", 
-                             "-new", 
-                             "-nodes",
-                             "-config", servercnf, 
-                             "-key", "certified-keys/"+keyname+".key", 
-                             "-out", "certified-keys/"+keyname+".csr"],
-                            env={"OPENSSL_CONF": servercnf})
-    proc.wait()
+    invoke_openssl("genrsa", "-out", "certified-keys/"+keyname+".key", 
+        config['keysize'], cnfpath=servercnf)
+    invoke_openssl("req", "-new", "-nodes", "-config", servercnf, 
+       "-key", "certified-keys/"+keyname+".key", 
+       "-out", "certified-keys/"+keyname+".csr",
+       cnfpath=servercnf)
 
 def build_ca_cnf(pargs):
     t = template_from_file('openssl.cnf.ca.template')
@@ -232,16 +234,11 @@ def signcerts(pargs):
     logging.debug("signcerts() pargs: %r" % pargs)
     keyname = pargs.keyname
 
-    proc = subprocess.Popen([opensslbin, 
-                             "ca", 
-                             "-batch", 
-                             "-config", CA_CNF,
-                             "-in",  "certified-keys/"+keyname+".csr", 
-                             "-out", "certified-keys/"+keyname+".cert", 
-                             "-days", config['server_valid_days']],
-                            env={"OPENSSL_CONF": CA_CNF})
-    proc.wait()
-
+    invoke_openssl("ca", "-batch", "-config", CA_CNF,
+       "-in",  "certified-keys/"+keyname+".csr", 
+       "-out", "certified-keys/"+keyname+".cert", 
+       "-days", config['server_valid_days'],
+       cnfpath=CA_CNF)
 
 def gensign(pargs):
     logging.debug("gensign() pargs: %r" % pargs)
@@ -252,15 +249,15 @@ def make_ovpn_zip(pargs):
 
     # zip files list
     zfl = {'cacrt':'ca.crt.pem', 
-           'dh':'dh1024.pem',
+           'dh':config['dhfilename'],
            'crt':'certified-keys/'+pargs.keyname+'.cert',
            'key':'certified-keys/'+pargs.keyname+'.key'}
 
     for p in zfl:
         if not (os.path.exists(zfl[p])):
-            raise Exception("Path '{}' does not exist but is ".format(p), 
-                            "required, did you create the VPN CA and client ",
-                            "private key and sign it?")
+            e = "Path '{}' does not exist but is required, did ".format(zfl[p])
+            e+= "you create the VPN CA and client private key and sign it?"
+            raise Exception(e)
 
     zfl['ovpn'] = 'certified-keys/{}.ovpn'.format(config['vpnserver'])
     fovpn=open(zfl['ovpn'],'w')
@@ -343,16 +340,10 @@ def examinecsr(pargs):
             break
     else:
         raise Exception("No such CSR file '{}', exiting...".format(pargs.csrfile))
-    
-    command = [opensslbin, "req", "-in", csrfile, "-noout", "-text"]
-    environment = {"OPENSSL_CONF": CA_CNF}
-    proc = subprocess.Popen(command, env=environment)
-    proc.wait()
+    invoke_openssl("req", "-in", csrfile, "-noout", "-text", cnfpath=CA_CNF)
 
-def catools(pargs):
-    if pargs.reinit:
-        initca(pargs)
-    elif pargs.installer:
+def catools(pargs): ##BK
+    if pargs.installer:
         build_ca_nsis_installer(pargs)
 
 def dmisc(pargs):
@@ -425,6 +416,13 @@ def main(*args):
     h+='it. See the readme file for more information on this option. ' 
     p_ovpninst.add_argument('--installer', action='store_true', help=h)
 
+    p_cainst = argparse.ArgumentParser(add_help=False)
+    h='Build an installer .exe for the certificate authority that can be '
+    h+='distributed to end users. See the readme file for more information '
+    h+='on this option. ' 
+    p_cainst.add_argument('--installer', action='store_true', help=h)
+
+
     ### SUB PARSERS
     
     h="Generate an openssl.cnf file for a server"
@@ -454,27 +452,35 @@ def main(*args):
     s_gensign.set_defaults(func=gensign)
 
     h='Create a vpn configuration from an existing signed private key, and zip '
-    h+='them all up into a zipfile in ~/vpn-KEYNAME.zip.'
+    h+='them all up into a zipfile in ' + config['output_path'] 
+    h+='/vpn-KEYNAME.zip.'
     s_vpnconfig = subparsers.add_parser('vpnconfig', help=h, 
                                         parents=[p_keyname, p_ovpninst])
     s_vpnconfig.set_defaults(func=make_ovpn_zip)
 
     h='Generate a VPN private key, sign it, create a VPN configuration from '
-    h+='it, and zip them all up into a zipfile in ~/vpn-KEYNAME.zip.'
+    h+='it, and zip them all up into a zipfile in ' + config['output_path']
+    h+='/vpn-KEYNAME.zip.'
     s_vpngensign = subparsers.add_parser('vpngensign', help=h,
                                          parents=[p_keyname, p_ovpninst, p_cnf])
     s_vpngensign.set_defaults(func=vpngensign)
 
-    h ="Misc certificate authority tasks."
-    s_ca = subparsers.add_parser('ca', help=h)
+    h ='Initializa a certificate authority in this directory'
+    s_initca = subparsers.add_parser('initca', help=h, parents=[p_cainst])
 
-    h='Build an installer .exe for the certificate authority that can be '
-    h+='distributed to end users. See the readme file for more information '
-    h+='on this option. ' 
-    s_ca.add_argument('--installer', action='store_true', help=h)
+    h ='Initializa a certificate authority for OpenVPN in this directory'
+    s_vpninitca = subparsers.add_parser('vpninitca', help=h)
+
+    h ="Misc certificate authority tasks."
+    s_ca = subparsers.add_parser('ca', help=h, parents=[p_cainst])
+    g_ca = s_ca.add_mutually_exclusive_group()
+
+    h='Generate Diffie-Hellman parameters file (required for OpenVPN)'
+    g_ca.add_argument('--gendh', help=h, action='store_true')
 
     h='Initialize a Certificate Authority in this directory'
-    s_ca.add_argument('--reinit', help=h, action='store_true')
+    g_ca.add_argument('--reinit', help=h, action='store_true')
+    s_ca.set_defaults(func=catools)
 
     if config.getboolean('debug'):
         s_debug = subparsers.add_parser('debug', 
@@ -484,9 +490,11 @@ def main(*args):
 
         h='THIS OPTION WILL DELETE ALL FILES IN THE CURRENT DIRECTORY. '
         h+='It is really intended just for debugging.'
-        s_ca.add_argument('--purge', action='store_true', help=h)
+        s_initca.add_argument('--purge', action='store_true', help=h)
+        s_vpninitca.add_argument('--purge', action='store_true', help=h)
 
-    s_ca.set_defaults(func=catools)
+    s_initca.set_defaults(func=initca)
+    s_vpninitca.set_defaults(func=vpninitca)
 
     pargs = argparser.parse_args()
 

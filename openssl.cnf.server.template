@@ -1,6 +1,6 @@
 # server openssl configuration file
 HOME                    = .
-RANDFILE                = $$ENV::HOME/.rnd
+RANDFILE                = $$HOME/.rnd
 
 [ req ]
 default_bits            = $keysize

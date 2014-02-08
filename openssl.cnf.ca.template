@@ -2,7 +2,7 @@
 # Via minipki
 
 HOME                    = .
-RANDFILE                = $$ENV::HOME/.rnd
+RANDFILE                = $$HOME/.rnd
 
 [ root_ca_distinguished_name ]
 commonName = $ca_commonName

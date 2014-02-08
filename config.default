@@ -58,6 +58,10 @@ vpngateway = 10.2.2.1
 vpn_pkica = no
 vpn_pkica_path = 
 
+# OpenVPN requires Diffie Hellman parameter file. 1024 bits is a good default. 
+# Don't set this too high: http://openvpn.net/archive/openvpn-users/2006-04/msg00242.html
+dhbits = 1024
+
 # The location for things like zip files and installers that this script creates
 # Note that certified keys go into the certified-keys directory though.
 output_path = ~
