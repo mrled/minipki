@@ -88,8 +88,19 @@ def which(program):
     return None
 
 def invoke_openssl(*opensslargs, cnfpath):
+    if os.path.isfile('.rnd'):
+        os.unlink('.rnd')
+
     invocation = [opensslbin] + list(opensslargs)
-    environment = {"OPENSSL_CONF": cnfpath}
+    # You can leave out RANDFILE but it gives you a dumb error when generating
+    # DH params. It's supposed to use the RANDFILE entry in the openssl cnf
+    # but it doesn't seem to -- only for the DH generation. ???
+    environment = {"OPENSSL_CONF": cnfpath, 'RANDFILE': './.rnd'}
+
+    logging.debug("Running command '{}' in environment '{}'".format(
+        ' '.join(invocation), 
+        '; '.join({'{} = {}'.format(key, environment[key]) 
+            for key in environment})))
     proc = subprocess.Popen(invocation, env=environment)
     proc.wait()
 
@@ -286,7 +297,7 @@ def build_ovpn_config(pargs):
                         vpnport = config['vpnport'],
                         vpnprotocol = config['vpnprotocol'],
                         vpnremotesubnet = config['vpnremotesubnet'],
-                        vpnnetmask = config['vpnnetmask'],
+                        vpnremotenetmask = config['vpnremotenetmask'],
                         vpngateway = config['vpngateway'])
 
     return ovpn
@@ -345,6 +356,8 @@ def examinecsr(pargs):
 def catools(pargs): ##BK
     if pargs.installer:
         build_ca_nsis_installer(pargs)
+    if pargs.gendh:
+        gendh()
 
 def dmisc(pargs):
     if pargs.action == 'pwd':

@@ -47,6 +47,7 @@ vpnclientsubnet = 10.1.1.0
 
 # the remote subnet is the VPN subnet for the remote office
 vpnremotesubnet = 10.2.2.0
+vpnremotenetmask = 255.255.255.0
 
 # the vpn gateway is the machine that routes between the two subnets 
 # (probably the local address of your vpn server
