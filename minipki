@@ -196,11 +196,12 @@ def makecnf(pargs):
 
     # Format the subjectAltNames list like OVPN requires
     try:
-        san = set(pargs.subjectAltName.split(",") + [cn])
+        san = sorted(list(set(pargs.subjectAltName.split(" ") + [cn]))
 
         subjectAltNameLines = "subjectAltName = @alt_names" + "\n\n" 
         subjectAltNameLines+= "[ alt_names ]" + "\n"
-        ip = dns = [] 
+        ip = []
+        dns = [] 
 
         for entry in san:
             # test if this is an IP address by asking the socket module
