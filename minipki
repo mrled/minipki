@@ -211,11 +211,12 @@ def makecnf(pargs):
 
     # Format the subjectAltNames list like OVPN requires
     try:
-        san = set(pargs.subjectAltName.split(",") + [cn])
+        san = sorted(list(set(pargs.subjectAltName.split(" ") + [cn]))
 
         subjectAltNameLines = "subjectAltName = @alt_names" + "\n\n" 
         subjectAltNameLines+= "[ alt_names ]" + "\n"
-        ip = dns = [] 
+        ip = []
+        dns = [] 
 
         for entry in san:
             # test if this is an IP address by asking the socket module
@@ -255,6 +256,40 @@ def signcerts(pargs):
        "-out", "certified-keys/"+keyname+".cert", 
        "-days", config['server_valid_days'],
        cnfpath=CA_CNF)
+
+def selfsign(pargs):
+    logging.debug("selfsign pargs: %r" % pargs)
+    # We don't use a CA so we might not have a certified-keys directory
+    # TODO: clean this up, probably best to ENSURE we don't have a CA
+
+    #fserial=open("serial.txt","w")
+    #fserial.write("01")
+    #fserial.close()
+    #open("index.txt","w").close() #create an empty file
+    os.mkdir("private",0o700)
+    #os.mkdir("newcerts",0o700)
+    os.mkdir("certified-keys",0o700)
+
+    if pargs.cnf: 
+        if not (os.path.exists(pargs.cnf)):
+            e ="Server configuration file specified on command line as "
+            e+="'{}', but file does not exist".format(pargs.cnf),
+            raise Exception(e)
+        servercnf=pargs.cnf
+    else:
+        servercnf='certified-keys/'+pargs.keyname+".openssl.cnf"
+        if not (os.path.exists(servercnf)):
+            d="genprivkey: openssl configuration file not present, "
+            d+="generating..."
+            logging.debug(d)
+            makecnf(pargs)
+    invoke_openssl('req','-x509','-nodes',
+        '-days',config['server_valid_days'],
+        '-config',servercnf,
+        '-newkey','rsa:{}'.format(config['keysize']),
+        '-keyout','private/'+pargs.keyname+'.key',
+        '-out','certified-keys/'+pargs.keyname+'.crt',
+        cnfpath=servercnf)
 
 def gensign(pargs):
     logging.debug("gensign() pargs: %r" % pargs)
@@ -376,16 +411,19 @@ def dmisc(pargs):
 def main(*args):
     global opensslbin
     if (os.name == 'nt'):
-        inpath=which("openssl.exe")
-        if (inpath):
-            opensslbin=inpath
-        else:
+        opensslbin=which("openssl.exe")
+        if not opensslbin:
             # check some known locations on Windows
-            for path in [r"C:\Program Files\GnuWin32\bin\openssl.exe",
-                         r"C:\Program Files (x86)\GnuWin32\bin\openssl.exe",
-                         r"C:\Program Files\OpenVPN\bin\openssl.exe",
-                         r"C:\Program Files (x86)\OpenVPN\bin\openssl.exe",
-                         r"C:\git\bin\openssl.exe"]:
+            pf64=os.environ['ProgramFiles']
+            pf32=os.environ['ProgramFiles(x86)']
+            for path in [pf64+r"\GnuWin32\bin\openssl.exe",
+                         pf32+r"\GnuWin32\bin\openssl.exe",
+                         pf64+r"\OpenVPN\bin\openssl.exe", # Community Edition
+                         pf32+r"\OpenVPN\bin\openssl.exe",
+                         pf64+r"\OpenVPN Technologies\OpenVPN Client\core\openssl.exe", # Enterprise Edition
+                         pf32+r"\OpenVPN Technologies\OpenVPN Client\core\openssl.exe",
+                         pf64+r"\Git\bin\openssl.exe",
+                         pf32+r"\Git\bin\openssl.exe"]:
                 if (is_exe(path)):
                     opensslbin=path
                     break
@@ -396,10 +434,8 @@ def main(*args):
     elif (os.name == 'posix'):
         # for POSIX systems we're just going to assume that openssl is in the 
         # path and $EDITOR is an existing env var. 
-        inpath=which("openssl")
-        if (inpath):
-            opensslbin=inpath
-        else:
+        opensslbin=which("openssl")
+        if not opensslbin:
             raise Exception("Can't find OpenSSL binary. Exiting...")
 
     ### ARGUMENT PARSING
@@ -469,6 +505,11 @@ def main(*args):
                                       parents=[p_keyname, p_commonname, 
                                                p_san, p_cnf])
     s_gensign.set_defaults(func=gensign)
+
+    h='Generate a self-signed certificate (without need of a CA).'
+    s_selfsign = subparsers.add_parser('selfsign', help=h, 
+        parents=[p_keyname, p_commonname, p_san, p_cnf])
+    s_selfsign.set_defaults(func=selfsign)
 
     h='Create a vpn configuration from an existing signed private key, and zip '
     h+='them all up into a zipfile in ' + config['output_path'] 

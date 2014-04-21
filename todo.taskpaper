@@ -19,6 +19,9 @@
 - Add a license@done
 - Update the README
 - Make a Release on Github
+- Add generation of self-signed certs @done
+- Clean up selfsign function. Some duplicated code in there.
+- Add option to generate pfx files for easy importing on Windows machines
 
 Fix the installer (maybe 1.1?):
 - NSIS under OS X
