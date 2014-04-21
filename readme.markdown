@@ -34,7 +34,7 @@ First do this to generate your CA:
 
 The `--ca_commonName` argument is required, but the rest are optional. 
 
-**Option 2: use an existing CA**
+ç**Option 2: use an existing CA**
 
 If you already have a CA, you'll need to make sure the layout is the same as I expect. 
 
@@ -102,6 +102,10 @@ I use [OpenVPN](http://openvpn.net/index.php/open-source/downloads.html) for sev
 Much of the functionality is the same - you can use `minipki [genkey|gensign|buildcnf]` exactly as before. However, I added another step in the process - `minipki vpnconfig` will create an OpenVPN configuration file for an existing private client key, and `minipki vpngensign` will generate a private key, sign it, and build an OpenVPN config file all in one step. Both of these subcommands also zip up all the client configuration files - that is, the DH file, `ca.crt.pem`, `clientname.key`, `clientname.cert`, and `vpnname.ovpn` - for easy deployment. 
 
 I've also added some extra options for VPN use. When generating CSRs, you can use `--cnf` to specify a cnf file rather than have `minipki` build one for you or find one named like `keyname.openssl.cnf`. I use this because I have the same openssl.cnf file for all my OpenVPN client keys to make things simpler (and rather than using commonName or emailAddress fields to determine who a given key belongs to, I just use the filename). 
+
+There are still some manual steps when creating the VPN, however. 
+
+1.  Create the openvpn.conf for the server
 
 ## Security
 

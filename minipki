@@ -155,6 +155,7 @@ def vpninitca(pargs):
 
 def genprivkey(pargs):
     keyname=pargs.keyname
+
     logging.debug("genprivkey pargs: %r" % pargs)
     if pargs.cnf: 
         if not (os.path.exists(pargs.cnf)):
@@ -183,7 +184,8 @@ def build_ca_cnf(pargs):
                          emailAddressLine = config['emailAddressLine'],
                          organizationName = config['orgname'],
                          countryName = config['country'],
-                         default_keysize = config['keysize'])
+                         default_keysize = config['keysize'],
+                         certtype = "server")
     return cacnf
 
 def makecnf(pargs):
@@ -194,6 +196,8 @@ def makecnf(pargs):
     logging.debug("makecnf() arguments: %r" % pargs)
 
     t = template_from_file('openssl.cnf.server.template')
+    if not config['certtype']:
+        config['certtype'] = "server"
 
     # Ensure the commonName is in the subjectAltNames list, as OVPN requires
     try:
@@ -235,7 +239,8 @@ def makecnf(pargs):
                              commonName = cn,
                              countryName = config['country'],
                              emailAddressLine = config['emailAddressLine'],
-                             subjectAltNameLines = subjectAltNameLines)
+                             subjectAltNameLines = subjectAltNameLines,
+                                 certtype = config['certtype'])
 
     fcnf=open("certified-keys/"+pargs.keyname+".openssl.cnf",'w')
     fcnf.write(servercnf)
@@ -287,6 +292,7 @@ def make_ovpn_zip(pargs):
         build_ovpn_nsis_installer(pargs)
 
 def vpngensign(pargs):
+    config['certtype'] = "client"
     gensign(pargs)
     make_ovpn_zip(pargs)
 

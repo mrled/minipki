@@ -24,7 +24,7 @@ commonName = $commonName
 $emailAddressLine
 
 [ v3_req ]
-nsCertType = server
+nsCertType = $certtype
 basicConstraints = CA:FALSE
 keyUsage = nonRepudiation, digitalSignature, keyEncipherment
 
