@@ -109,7 +109,7 @@ def invoke_openssl(*opensslargs, cnfpath):
         os.unlink('.rnd')
 
 def initca(pargs):
-    if pargs.purge:
+    if config.getboolean('debug') and pargs.purge:
         for p in os.listdir("."): 
             if p == "minipki.config":
                 pass
@@ -211,7 +211,7 @@ def makecnf(pargs):
 
     # Format the subjectAltNames list like OVPN requires
     try:
-        san = sorted(list(set(pargs.subjectAltName.split(" ") + [cn]))
+        san = sorted(list(set(pargs.subjectAltName.split(" ") + [cn])))
 
         subjectAltNameLines = "subjectAltName = @alt_names" + "\n\n" 
         subjectAltNameLines+= "[ alt_names ]" + "\n"
