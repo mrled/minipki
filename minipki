@@ -196,7 +196,9 @@ def makecnf(pargs):
     logging.debug("makecnf() arguments: %r" % pargs)
 
     t = template_from_file('openssl.cnf.server.template')
-    if not config['certtype']:
+    try:
+        ct = config['certtype']
+    except KeyError:
         config['certtype'] = "server"
 
     # Ensure the commonName is in the subjectAltNames list, as OVPN requires
